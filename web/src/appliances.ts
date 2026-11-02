@@ -14,9 +14,11 @@ export interface Row {
   eer: string
   loadPercent: string
   kwhPerYear: string
+  /** Shows only the one-line summary. Optional so lists saved before this field still load. */
+  collapsed?: boolean
 }
 
-export type Preset = Omit<Row, 'id'> & { icon: string }
+export type Preset = Omit<Row, 'id' | 'collapsed'> & { icon: string }
 
 const blank = { quantity: '1', watts: '', hoursPerDay: '', btu: '', eer: '', loadPercent: '', kwhPerYear: '' }
 
@@ -42,9 +44,26 @@ export const KIND_LABEL: Record<Kind, string> = {
 }
 
 let nextId = 1
-export function newRow(preset: Preset): Row {
+export function newRow(preset: Preset, collapsed = false): Row {
   const { icon: _icon, ...fields } = preset
-  return { ...fields, id: nextId++ }
+  return { ...fields, id: nextId++, collapsed }
+}
+
+const num = (text: string) => {
+  const n = Number(text)
+  return text.trim() !== '' && Number.isFinite(n) ? n.toLocaleString('th-TH') : text || '–'
+}
+
+/** One line describing a row's spec, shown when the row is collapsed. */
+export function specSummary(row: Row): string {
+  const parts =
+    row.kind === 'aircon'
+      ? [`${num(row.btu)} BTU`, `EER ${num(row.eer)}`, `${num(row.hoursPerDay)} ชม./วัน`, `ทำงาน ${num(row.loadPercent)}%`]
+      : row.kind === 'label'
+        ? [`${num(row.kwhPerYear)} kWh/ปี`]
+        : [`${num(row.watts)} วัตต์`, `${num(row.hoursPerDay)} ชม./วัน`]
+  if (row.quantity.trim() !== '1') parts.push(`× ${num(row.quantity)} เครื่อง`)
+  return parts.join(' · ')
 }
 
 export function restoreIds(rows: Row[]): Row[] {
@@ -52,4 +71,5 @@ export function restoreIds(rows: Row[]): Row[] {
   return rows
 }
 
-export const DEFAULT_ROWS: Preset[] = [PRESETS[0], PRESETS[2], PRESETS[3], PRESETS[5]]
+/** The starter list opens collapsed so the page begins short; a row added later opens expanded. */
+export const defaultRows = (): Row[] => [PRESETS[0], PRESETS[2], PRESETS[3], PRESETS[5]].map((p) => newRow(p, true))

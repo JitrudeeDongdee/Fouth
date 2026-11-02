@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DEFAULT_ROWS, KIND_LABEL, newRow, PRESETS, restoreIds, type Kind, type Row } from './appliances'
+import { defaultRows, KIND_LABEL, newRow, PRESETS, restoreIds, specSummary, type Kind, type Row } from './appliances'
 import { estimate } from './estimate'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
@@ -33,7 +33,7 @@ const baht = (text: string) => Number(text).toLocaleString('th-TH', { minimumFra
 
 export default function App() {
   const saved = useMemo(load, [])
-  const [rows, setRows] = useState<Row[]>(() => (saved ? restoreIds(saved.rows) : DEFAULT_ROWS.map(newRow)))
+  const [rows, setRows] = useState<Row[]>(() => (saved ? restoreIds(saved.rows) : defaultRows()))
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
 
@@ -45,6 +45,10 @@ export default function App() {
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
+  const allCollapsed = rows.length > 0 && rows.every((r) => r.collapsed)
+  const setAllCollapsed = (collapsed: boolean) => setRows((all) => all.map((r) => ({ ...r, collapsed })))
+  // Rows and result lines come back in the same order, so a row's kWh is at its own index.
+  const kwhOf = (index: number) => (result.error ? null : result.appliances[index]?.kwhPerMonth)
 
   return (
     <div className="page">
@@ -61,14 +65,48 @@ export default function App() {
           <div className="panel-head">
             <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
             <span className="muted">{rows.length} รายการ</span>
+            {rows.length > 0 && (
+              <button className="link-btn" onClick={() => setAllCollapsed(!allCollapsed)}>
+                {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
+              </button>
+            )}
           </div>
 
           {rows.length === 0 && <p className="empty">ยังไม่มีเครื่องใช้ไฟฟ้า เลือกจากรายการด้านล่างเพื่อเริ่ม</p>}
 
           <ul className="rows">
-            {rows.map((row) => (
+            {rows.map((row, index) =>
+              row.collapsed ? (
+                <li key={row.id} className="row row-collapsed">
+                  <button
+                    className="row-summary"
+                    aria-expanded="false"
+                    onClick={() => update(row.id, { collapsed: false })}
+                  >
+                    <span className="chevron" aria-hidden="true">
+                      ▸
+                    </span>
+                    <span className="summary-text">
+                      <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
+                      <span className="muted small">{specSummary(row)}</span>
+                    </span>
+                    {kwhOf(index) && <span className="summary-kwh">{kwhOf(index)} หน่วย</span>}
+                  </button>
+                  <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
+                    ✕
+                  </button>
+                </li>
+              ) : (
               <li key={row.id} className="row">
                 <div className="row-top">
+                  <button
+                    className="icon-btn chevron-btn"
+                    aria-expanded="true"
+                    aria-label={`ย่อ ${row.name}`}
+                    onClick={() => update(row.id, { collapsed: true })}
+                  >
+                    ▾
+                  </button>
                   <input
                     className="name"
                     aria-label="ชื่อเครื่องใช้ไฟฟ้า"
@@ -115,7 +153,8 @@ export default function App() {
                   <Field label="จำนวน" unit="เครื่อง" value={row.quantity} onChange={(v) => update(row.id, { quantity: v })} />
                 </div>
               </li>
-            ))}
+              ),
+            )}
           </ul>
 
           <div className="add">
