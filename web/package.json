@@ -1,0 +1,27 @@
+{
+  "name": "fouth-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "engine": "node scripts/copy-engine.mjs",
+    "dev": "npm run engine && vite",
+    "build": "npm run engine && tsc --noEmit && vite build",
+    "test": "npm run engine && vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@js-joda/core": "3.2.0",
+    "format-util": "1.0.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "typescript": "5.6.3",
+    "vite": "5.4.11",
+    "vitest": "2.1.8"
+  }
+}

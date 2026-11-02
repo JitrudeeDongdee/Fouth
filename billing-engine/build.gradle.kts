@@ -1,22 +1,33 @@
 plugins {
-    kotlin("jvm")
+    kotlin("multiplatform")
 }
 
 repositories {
     mavenCentral()
 }
 
-dependencies {
-    testImplementation(kotlin("test"))
-    testImplementation(platform("org.junit:junit-bom:5.11.3"))
-    testImplementation("org.junit.jupiter:junit-jupiter-params")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
 kotlin {
     jvmToolchain(21)
-}
 
-tasks.test {
-    useJUnitPlatform()
+    jvm()
+
+    // The browser calculator imports this library as an ES module (see web/).
+    js {
+        moduleName = "billing-engine"
+        nodejs()
+        useEsModules()
+        binaries.library()
+        generateTypeScriptDefinitions()
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            // java.math.BigDecimal and java.time are JVM-only; these work on JVM and JS.
+            api("com.ionspin.kotlin:bignum:0.3.10")
+            api("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+    }
 }
