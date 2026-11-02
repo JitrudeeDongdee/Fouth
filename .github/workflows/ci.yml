@@ -1,15 +1,23 @@
-name: CI
+name: CI/CD
 
+# Every push and pull request: test the Kotlin engine (JVM + JS) and the web page.
+# A push to develop (a merged PR) also deploys the estimator to GitHub Pages.
 on:
   push:
     branches: [main, develop]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
+  engine:
+    name: Engine tests (JVM + JS)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +26,91 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew test --no-daemon
-      - name: Upload test report
+      # allTests runs the same commonTest suite on the JVM and on Node.js.
+      - run: ./gradlew :billing-engine:allTests :billing-engine:jsNodeProductionLibraryDistribution --no-daemon
+      - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
-          path: billing-engine/build/reports/tests/test
+          name: engine-test-reports
+          path: billing-engine/build/reports/tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-js
+          path: billing-engine/build/dist/js/productionLibrary
+          retention-days: 3
+
+  web:
+    name: Web tests + build
+    needs: engine
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, for the version below
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-js
+          path: billing-engine/build/dist/js/productionLibrary
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      # /version.json: what is deployed, from the git tag (single source of truth) + commit.
+      - name: Write version.json
+        run: |
+          base=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' || true)
+          version="${base:-0.0.0}-dev.${GITHUB_RUN_NUMBER}"
+          printf '{"version":"%s","sha":"%s","built_at":"%s"}\n' \
+            "$version" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/version.json
+          cat dist/version.json
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        with:
+          path: web/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: web
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Check the deployed version
+        run: |
+          url="${{ steps.deployment.outputs.page_url }}version.json"
+          for i in 1 2 3 4 5 6; do
+            body=$(curl -fsS "$url" || true)
+            echo "$body" | grep -q "$GITHUB_SHA" && { echo "live: $body"; exit 0; }
+            sleep 10
+          done
+          echo "version.json at $url does not show $GITHUB_SHA"; exit 1
+      # Opens a ticket in the phak "Deploy Fail Log" project. It never changes the
+      # deploy's outcome and skips itself when the PHAK_TOKEN secret is not set.
+      - name: Log failed deploy to phak
+        if: failure()
+        env:
+          PHAK_TOKEN: ${{ secrets.PHAK_TOKEN }}
+          JOB_STARTED_AT: ${{ github.event.head_commit.timestamp }}
+          COMMIT_TITLE: ${{ github.event.head_commit.message }}
+        run: bash .github/scripts/log-deploy-failure.sh || true

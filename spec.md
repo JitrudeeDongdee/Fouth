@@ -4,47 +4,59 @@ Source of truth for scope, decisions and current state. Update after every task.
 
 ## Goal
 
-A portfolio-grade utility billing system for an electricity distributor: customers and
-meters split by district office, meter readings intake, effective-dated rate tables,
-an idempotent and resumable monthly billing run, payments and overdue/disconnection flow,
-and role-based access scoped per district.
+**Now (decided 2026-11-02):** a public website that helps a household estimate its
+monthly electricity bill. The user lists appliances (fridge, air conditioner, TV, …),
+enters each one's spec and hours of use per day, and gets estimated kWh per month and
+a bill priced with the real tiered rates, Ft and VAT. It runs entirely in the browser
+on GitHub Pages, using the same Kotlin billing engine compiled to JavaScript.
 
-The selling point is data volume: one smart meter sends a reading every 15 minutes
-(~2,880 rows/month). 100,000 meters ≈ 288 million rows/month, so the design needs
-monthly partitions, summary tables and batch processing.
+**Later (not decided):** the utility back office — customers and meters per district,
+smart-meter readings intake (~2,880 rows/meter/month), an idempotent monthly billing
+run, payments/overdue, roles per district. The engine is shared, so this can be built
+on top without changing the pricing rules.
 
 ## Stack
 
-- Kotlin + Spring Boot 3 (JDK 21), Gradle Kotlin DSL, multi-module
-- PostgreSQL + Flyway (from v0.2)
-- JUnit 5, Testcontainers (from v0.2)
-- React + TypeScript + Vite frontend, GitHub Pages demo with a simulated API (v0.3–v0.4)
-- CI: GitHub Actions
-
-## Planned features
-
-- Customers and meters split by district office (each user sees only their district).
-- Readings: smart meters every 15 min, manual meters monthly. Missing readings are
-  estimated, then corrected in the next cycle.
-- Rate tables with effective dates: tiered, TOU, service charge, Ft (changes every
-  4 months), VAT 7%. All money in `BigDecimal` with explicit rounding rules.
-- Monthly billing run (batch): idempotent (no double billing on re-run), resumable,
-  every bill records the rate set and readings it used.
-- Payments and overdue: overdue bill → notice → status "awaiting disconnection".
-- Roles: admin / billing officer / meter reader / customer; district check on every request.
+- Kotlin Multiplatform (JVM + JS), JDK 21, Gradle Kotlin DSL, Kotlin 2.0.21
+- Decimals: `com.ionspin.kotlin:bignum` (works on JVM and JS); dates: `kotlinx-datetime`
+- Tests: `kotlin.test` in `commonTest`, run on both JVM and Node.js (`allTests`)
+- Web: React 18 + TypeScript + Vite in `web/`, Vitest; deployed to GitHub Pages
+- CI/CD: GitHub Actions (`.github/workflows/ci.yml`)
 
 ## Versions
 
 | Version | Scope | Status |
 |---|---|---|
-| v0.1 | Calculation engine (tiered, TOU, Ft, VAT) + full unit tests | done on `feature/v0.1-rate-engine`, PR into `develop` awaiting review |
-| v0.2 | Readings intake + billing run + PostgreSQL | not started |
-| v0.3 | Web pages + roles + payments/overdue | not started |
-| v0.4 | `ARCHITECTURE.md` (BPMN, ER, AWS scale-out) + PDF + demo site | not started |
+| v0.1 | Calculation engine (tiered, TOU, Ft, VAT) + unit tests | merged into `develop` (PR #1) |
+| v0.2 | Engine on JVM + JS, appliance estimator, web page on GitHub Pages, CI/CD | on `feature/web-calculator`, not merged |
+| later | Utility back office (readings, billing run, payments, roles) | not decided |
 
-## v0.1 — calculation engine (module `billing-engine`)
+## v0.2 — appliance estimator (package `com.fouth.billing.estimate`)
 
-Pure Kotlin, no Spring, no database. Package `com.fouth.billing.engine`.
+- `Appliance` (sealed):
+  - `RatedAppliance(name, watts, hoursPerDay, quantity)` — kWh/day = W × h ÷ 1000.
+  - `AirConditioner(name, btuPerHour, eer, hoursPerDay, loadFactor = 0.7, quantity)` —
+    W = BTU ÷ EER; kWh/day = W × loadFactor × h ÷ 1000.
+  - `LabelledAppliance(name, kwhPerYear, quantity)` — kWh/day = kWh/year ÷ 365 (fridge, energy label).
+- `UsageEstimator.estimate(appliances, daysPerMonth = 30)` → each appliance's kWh/month
+  rounded to 2 decimals; the total is the sum of the rounded lines (so lines add up).
+- `HomeRates` — PEA residential 1.1.1 / 1.1.2 (Jan 2023); Ft is an input.
+  `tariffCodeFor(kWh)`: ≤ 150 → 1.1.1, otherwise 1.1.2.
+- `HomeBillEstimator.estimate(appliances, ftPerKwh, days)` → usage + `BillBreakdown`.
+- JS boundary (`jsMain`, `com.fouth.billing.web`): `estimateBill(inputs, ftPerKwh, days)`
+  takes and returns **strings** for every number, so no value becomes a JS float. Errors come
+  back in `EstimateResult.error` instead of throwing.
+
+### Estimator assumptions (shown to the user on the page)
+
+- Air conditioner load factor 70% by default (the compressor cycles); user-editable.
+- 1.1.1 vs 1.1.2 is chosen from this month's estimate; the utility uses usage history.
+- Division (BTU ÷ EER, kWh/year ÷ 365) uses 10 decimal places, half-up, before the
+  2-decimal kWh rounding.
+
+## v0.1 — calculation engine (package `com.fouth.billing.engine`)
+
+Pure Kotlin (common code), no Spring, no database.
 
 ### Data contracts
 
@@ -64,12 +76,12 @@ Pure Kotlin, no Spring, no database. Package `com.fouth.billing.engine`.
 
 ### Rounding rules (decided)
 
-- All money: scale 2, `RoundingMode.HALF_UP`, in one place (`Money`).
+- All money: 2 decimals, half-up (`ROUND_HALF_AWAY_FROM_ZERO`, same as Java `HALF_UP`), in one place (`Money`).
 - Tier/TOU line amounts are kept exact; rounding happens **once per bill component**
   (energy, Ft, VAT), not per tier line, so tier rounding cannot drift.
 - Ft charge = total kWh × Ft rate, rounded. Ft may be negative.
 - Subtotal = energy + service charge + Ft. VAT = subtotal × VAT rate, rounded. Total = subtotal + VAT.
-- `BigDecimal` is only ever built from strings, never from `Double`.
+- Decimals are only ever built from strings (`decimal("8.19")`), never from `Double`.
 
 ### Assumptions (stated, not verified with a real utility)
 
@@ -90,10 +102,25 @@ Tariff rates 1.1.1, 1.1.2 and 1.2.2 come from PEA's published schedule
 
 - Repo: https://github.com/JitrudeeDongdee/Fouth (public). Branches: `main`, `develop`.
 - Git Flow: feature branches off `develop`, PR into `develop`; a human merges.
-- v0.1 done on `feature/v0.1-rate-engine`: 30 unit tests pass locally (`./gradlew test`, JDK 21,
-  Gradle 8.10.2 wrapper, Kotlin 2.0.21). CI: `.github/workflows/ci.yml` runs the same on push/PR.
+- `feature/web-calculator` (v0.2): 31 engine tests pass on JVM and on Node.js
+  (`./gradlew :billing-engine:allTests`), 3 web tests pass (`cd web && npm test`),
+  `npm run build` succeeds; page checked at desktop and 375 px widths.
+
+### CI/CD (`.github/workflows/ci.yml`)
+
+| Job | Runs on | Does |
+|---|---|---|
+| `engine` | every push / PR | `allTests` (JVM + JS), builds the JS library, uploads it as an artifact |
+| `web` | every push / PR | `npm ci`, `npm test`, `npm run build`, writes `dist/version.json` |
+| `deploy` | push to `develop` only | deploys `web/dist` to GitHub Pages, then checks the live `version.json` shows this commit |
+
+- `version.json` = `{version, sha, built_at}`; version is the latest `v*` tag (or `0.0.0`) + `-dev.<run>`.
+- On a failed deploy, `.github/scripts/log-deploy-failure.sh` opens a ticket in the phak
+  "Deploy Fail Log" project if the `PHAK_TOKEN` repository secret is set; otherwise it prints
+  "skipped". It always exits 0, so it cannot change the deploy result.
+- Pages must be enabled once with source "GitHub Actions" (repo Settings → Pages).
 
 ## Next step
 
-Human reviews and merges the v0.1 PR into `develop`. Then v0.2: readings schema
-with monthly partitions, Flyway, Testcontainers, billing run.
+Human reviews the `feature/web-calculator` PR and merges it into `develop`; the merge
+deploys the estimator to GitHub Pages.
