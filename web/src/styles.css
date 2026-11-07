@@ -114,6 +114,14 @@ h3 {
 
 .panel-head {
   gap: 12px;
+  /* Three controls do not fit beside the heading on a phone; let them drop a line
+     instead of squeezing the words until they break mid-phrase. */
+  flex-wrap: wrap;
+}
+
+.panel-head h2,
+.panel-head > .muted {
+  white-space: nowrap;
 }
 
 .link-btn {
@@ -404,6 +412,98 @@ input {
   font-weight: 700;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* Compare mode: one set is edited at a time, both are priced side by side. */
+.compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.tab {
+  font: inherit;
+  font-size: 0.88rem;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 14px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab.on {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.compare-bar .link-btn {
+  margin-left: auto;
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.compare-col {
+  font: inherit;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.compare-col:hover {
+  border-color: var(--accent);
+}
+
+.compare-col.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.compare-total {
+  /* Smaller than the single-set total: two of them have to fit on a phone. */
+  font-size: clamp(1.35rem, 4.5vw, 1.8rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.diff.saving {
+  color: var(--bar);
+}
+
+.diff.more {
+  color: var(--error);
 }
 
 .bars {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultRows, newRow, PRESETS, specSummary } from './appliances'
+import { copyRows, defaultRows, newRow, PRESETS, resumeIds, specSummary } from './appliances'
 
 describe('specSummary', () => {
   it('describes each kind of appliance on one line', () => {
@@ -21,5 +21,26 @@ describe('collapsed rows', () => {
   it('starts the default list collapsed and opens a newly added row', () => {
     expect(defaultRows().every((r) => r.collapsed)).toBe(true)
     expect(newRow(PRESETS[4]).collapsed).toBe(false)
+  })
+})
+
+describe('copying a set for the A/B comparison', () => {
+  it('gives every copied row a new id, so editing one set leaves the other alone', () => {
+    const a = defaultRows()
+    const b = copyRows(a)
+
+    expect(b.map((r) => r.name)).toEqual(a.map((r) => r.name))
+    expect(b.some((row) => a.some((other) => other.id === row.id))).toBe(false)
+    b[0].name = 'changed'
+    expect(a[0].name).not.toBe('changed')
+  })
+
+  it('resumes numbering above both saved sets, so a new row never reuses an id', () => {
+    const a = defaultRows()
+    const b = copyRows(a)
+    // A reload hands both sets back; ids must continue past the highest one seen.
+    resumeIds(a, b)
+    const added = newRow(PRESETS[4])
+    expect([...a, ...b].every((row) => row.id < added.id)).toBe(true)
   })
 })

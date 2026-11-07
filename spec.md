@@ -55,6 +55,23 @@ on top without changing the pricing rules.
   back in `EstimateResult.error` instead of throwing. `utilities()` hands the page each utility's
   code and its two type codes, so the page never hard-codes them.
 
+### Compare mode (A/B), web only
+
+The page keeps two appliance sets and prices both with the same utility, Ft and days,
+so the difference is only ever the appliances:
+
+- Set A is the list that already existed; set B is created by copying A the first time
+  compare mode is turned on (a list against an empty one says nothing). `copyRows` gives
+  every copied row a fresh id, so the two sets never share a row or a React key.
+- One set is edited at a time (tabs), while the result panel prices both and states the
+  difference per month and per year. Each column shows its own tariff code, because a
+  set that drops under 150 kWh moves to the cheaper one.
+- The difference is computed in whole satang (`Math.round(baht * 100)`), not by
+  subtracting two floats, so it cannot read 178.86999999999998.
+- Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
+  `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
+  compare mode still loads, because set A kept the old `rows` key.
+
 ### Estimator assumptions (shown to the user on the page)
 
 - Air conditioner load factor 70% by default (the compressor cycles); user-editable.
@@ -129,6 +146,10 @@ divergence fails loudly instead of passing silently.
 - `feature/web-calculator` (v0.2): 31 engine tests pass on JVM and on Node.js
   (`./gradlew :billing-engine:allTests`), 3 web tests pass (`cd web && npm test`),
   `npm run build` succeeds; page checked at desktop and 375 px widths.
+- `feature/collapsible-appliances`: collapsible rows, the MEA/PEA picker with the
+  September 2026 tariff, and the A/B compare mode. Engine tests pass on JVM and Node.js;
+  12 web tests pass; `npm run build` succeeds; both utilities and the compare mode checked
+  in the browser at desktop and 375 px. Not yet in a PR.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
