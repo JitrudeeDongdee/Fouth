@@ -1,8 +1,13 @@
 # Fouth
 
 A home electricity bill estimator: list your appliances (fridge, air conditioner, TV, …),
-enter each one's spec and hours of use per day, and see the estimated kWh per month and
-the bill priced with Thailand's tiered residential rates, Ft and VAT 7%.
+enter each one's spec and hours of use per day, pick the utility that bills you
+(กฟน./MEA or กฟภ./PEA), and see the estimated kWh per month and the bill priced with
+Thailand's tiered residential rates, Ft and VAT 7%.
+
+The rates are the progressive residential schedule in force from the September 2026 bill.
+MEA and PEA charge the same amounts, so the utility decides the type code the estimate
+reports (MEA 1.1 / 1.2, PEA 1.1.1 / 1.1.2), not the total.
 
 The pricing rules are a Kotlin Multiplatform library (`billing-engine`) that runs on the
 JVM and is compiled to JavaScript for the web page, so the browser uses exactly the code

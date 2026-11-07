@@ -10,6 +10,7 @@ import com.fouth.billing.estimate.HomeBillEstimator
 import com.fouth.billing.estimate.HomeRates
 import com.fouth.billing.estimate.LabelledAppliance
 import com.fouth.billing.estimate.RatedAppliance
+import com.fouth.billing.estimate.Utility
 import com.ionspin.kotlin.bignum.decimal.DecimalMode
 import com.ionspin.kotlin.bignum.decimal.RoundingMode
 
@@ -57,11 +58,20 @@ class EstimateResult(
     val total: String,
 )
 
+/**
+ * [utility] is "MEA" or "PEA". The two charge the same amounts; the utility decides
+ * which type code the estimate reports (MEA 1.1 / 1.2, PEA 1.1.1 / 1.1.2).
+ */
 @JsExport
-fun estimateBill(inputs: Array<ApplianceInput>, ftPerKwh: String, daysPerMonth: Int): EstimateResult =
+fun estimateBill(
+    inputs: Array<ApplianceInput>,
+    utility: String,
+    ftPerKwh: String,
+    daysPerMonth: Int,
+): EstimateResult =
     try {
         val appliances = inputs.map(::toAppliance)
-        val result = HomeBillEstimator.estimate(appliances, decimal(ftPerKwh), daysPerMonth)
+        val result = HomeBillEstimator.estimate(appliances, Utility.of(utility), decimal(ftPerKwh), daysPerMonth)
         val bill = result.bill
         // Rough split of the bill by each appliance's share of the kWh, for display only.
         val totalKwh = result.usage.totalKwh
@@ -87,9 +97,22 @@ fun estimateBill(inputs: Array<ApplianceInput>, ftPerKwh: String, daysPerMonth: 
         EstimateResult(e.message ?: "invalid input", emptyArray(), "", "", emptyArray(), "", "", "", "", "", "")
     }
 
-/** kWh per month at which the estimate switches from tariff 1.1.1 to 1.1.2. */
+/** kWh per month at which the estimate switches from the small- to the large-household tariff. */
 @JsExport
 fun smallHouseholdLimitKwh(): String = HomeRates.SMALL_HOUSEHOLD_LIMIT_KWH.toStringExpanded()
+
+/** One utility's code and the two type codes it prints on a residential bill. */
+@JsExport
+class UtilityTariffs(val code: String, val smallHousehold: String, val largeHousehold: String)
+
+/**
+ * The utilities the page may pass to [estimateBill], with their type codes, so the page
+ * never has to repeat them and the two cannot drift apart.
+ */
+@JsExport
+fun utilities(): Array<UtilityTariffs> =
+    Utility.entries.map { UtilityTariffs(it.code, it.smallHouseholdTariffCode, it.largeHouseholdTariffCode) }
+        .toTypedArray()
 
 /** A share of the bill is display-only; four decimals is plenty before it is rounded to satang. */
 private val SHARE_DIVISION = DecimalMode(decimalPrecision = 30, roundingMode = RoundingMode.ROUND_HALF_AWAY_FROM_ZERO, scale = 4)

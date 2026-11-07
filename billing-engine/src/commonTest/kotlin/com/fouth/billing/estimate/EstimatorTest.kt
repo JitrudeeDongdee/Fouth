@@ -1,6 +1,7 @@
 package com.fouth.billing.estimate
 
 import com.fouth.billing.engine.decimal
+import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -57,31 +58,85 @@ class EstimatorTest {
     }
 
     @Test
-    fun smallHouseholdUsesTariff111() {
-        // 15 kWh on 1.1.1: energy 15*2.3488 = 35.232 -> 35.23; Ft 15*0.3972 = 5.958 -> 5.96
+    fun smallHouseholdUsesTheSmallTariff() {
+        // 15 kWh on PEA 1.1.1: energy 15*2.3488 = 35.232 -> 35.23; Ft 15*0.3972 = 5.958 -> 5.96
         // subtotal 35.23 + 8.19 + 5.96 = 49.38; VAT 3.4566 -> 3.46; total 52.84
-        val result = HomeBillEstimator.estimate(listOf(tv), ftPerKwh = d("0.3972"))
+        val result = HomeBillEstimator.estimate(listOf(tv), Utility.PEA, ftPerKwh = d("0.3972"))
         assertEquals("1.1.1", result.bill.rates.tariff.code)
         assertEquals(d("49.38"), result.bill.subtotal)
         assertEquals(d("52.84"), result.bill.total)
     }
 
     @Test
-    fun householdOver150KwhUsesTariff112() {
-        // 213 kWh on 1.1.2: 150*3.2484 + 63*4.2218 = 487.26 + 265.9734 = 753.2334 -> 753.23
-        // Ft 213*0.3972 = 84.6036 -> 84.60; subtotal 753.23 + 24.62 + 84.60 = 862.45
-        // VAT 60.3715 -> 60.37; total 922.82
-        val result = HomeBillEstimator.estimate(listOf(tv, aircon, fridge), ftPerKwh = d("0.3972"))
+    fun householdOver150KwhUsesTheLargeTariff() {
+        // 213 kWh on the Sep 2026 large tariff: 200*3.0000 + 13*4.1584
+        //   = 600 + 54.0592 = 654.0592 -> 654.06
+        // Ft 213*0.3972 = 84.6036 -> 84.60; subtotal 654.06 + 24.62 + 84.60 = 763.28
+        // VAT 53.4296 -> 53.43; total 816.71
+        val result = HomeBillEstimator.estimate(listOf(tv, aircon, fridge), Utility.PEA, ftPerKwh = d("0.3972"))
         assertEquals("1.1.2", result.bill.rates.tariff.code)
-        assertEquals(d("753.23"), result.bill.energyCharge)
+        assertEquals(d("654.06"), result.bill.energyCharge)
         assertEquals(d("84.60"), result.bill.ftCharge)
+        assertEquals(d("816.71"), result.bill.total)
+    }
+
+    @Test
+    fun exactly150KwhStaysOnTheSmallTariff() {
+        assertEquals("1.1.1", HomeRates.tariffCodeFor(Utility.PEA, d("150")))
+        assertEquals("1.1.2", HomeRates.tariffCodeFor(Utility.PEA, d("150.01")))
+        assertEquals("1.1", HomeRates.tariffCodeFor(Utility.MEA, d("150")))
+        assertEquals("1.2", HomeRates.tariffCodeFor(Utility.MEA, d("150.01")))
+    }
+
+    @Test
+    fun meaAndPeaChargeTheSameAmountAndDifferOnlyInTheTypeCode() {
+        val appliances = listOf(tv, aircon, fridge)
+        val mea = HomeBillEstimator.estimate(appliances, Utility.MEA, ftPerKwh = d("0.3972"))
+        val pea = HomeBillEstimator.estimate(appliances, Utility.PEA, ftPerKwh = d("0.3972"))
+
+        assertEquals("1.2", mea.bill.rates.tariff.code)
+        assertEquals("1.1.2", pea.bill.rates.tariff.code)
+        assertEquals(pea.bill.energyCharge, mea.bill.energyCharge)
+        assertEquals(pea.bill.serviceCharge, mea.bill.serviceCharge)
+        assertEquals(pea.bill.total, mea.bill.total)
+    }
+
+    @Test
+    fun theJanuary2023ScheduleIsStillPricedForDatesBeforeSeptember2026() {
+        // Same 213 kWh on the old large tariff: 150*3.2484 + 63*4.2218
+        //   = 487.26 + 265.9734 = 753.2334 -> 753.23
+        // subtotal 753.23 + 24.62 + 84.60 = 862.45; VAT 60.3715 -> 60.37; total 922.82
+        val result = HomeBillEstimator.estimate(
+            listOf(tv, aircon, fridge),
+            Utility.PEA,
+            ftPerKwh = d("0.3972"),
+            on = LocalDate(2025, 1, 1),
+        )
+        assertEquals(d("753.23"), result.bill.energyCharge)
         assertEquals(d("922.82"), result.bill.total)
     }
 
     @Test
-    fun exactly150KwhStaysOn111() {
-        assertEquals("1.1.1", HomeRates.tariffCodeFor(d("150")))
-        assertEquals("1.1.2", HomeRates.tariffCodeFor(d("150.01")))
+    fun theFirst200UnitsAreCappedAtThreeBaht() {
+        // 200 kWh on the small tariff: 15*2.3488 + 10*2.9882 + 175*3.0000
+        //   = 35.232 + 29.882 + 525 = 590.114 -> 590.11
+        val heater = RatedAppliance("Heater", watts = d("10000"), hoursPerDay = d("1")) // 10 kWh/day
+        val result = HomeBillEstimator.estimate(
+            listOf(heater),
+            Utility.PEA,
+            ftPerKwh = d("0"),
+            daysPerMonth = 20,
+            tariffCode = "1.1.1",
+        )
+        assertEquals(d("200"), result.usage.totalKwh)
+        assertEquals(d("590.11"), result.bill.energyCharge)
+    }
+
+    @Test
+    fun anUnknownUtilityIsRejected() {
+        assertEquals(Utility.MEA, Utility.of("mea"))
+        assertEquals(Utility.PEA, Utility.of(" PEA "))
+        assertFailsWith<IllegalArgumentException> { Utility.of("EGAT") }
     }
 
     @Test
@@ -98,7 +153,7 @@ class EstimatorTest {
     @Test
     fun noAppliancesStillPaysServiceCharge() {
         // 0 kWh on 1.1.1: 8.19 + VAT 0.5733 -> 0.57 = 8.76
-        val result = HomeBillEstimator.estimate(emptyList(), ftPerKwh = d("0.3972"))
+        val result = HomeBillEstimator.estimate(emptyList(), Utility.PEA, ftPerKwh = d("0.3972"))
         assertEquals(d("8.76"), result.bill.total)
     }
 }

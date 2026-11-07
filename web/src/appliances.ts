@@ -66,9 +66,17 @@ export function specSummary(row: Row): string {
   return parts.join(' · ')
 }
 
-export function restoreIds(rows: Row[]): Row[] {
-  nextId = Math.max(0, ...rows.map((r) => r.id)) + 1
-  return rows
+/** Resumes id numbering above every saved row, so a new or copied row never collides. */
+export function resumeIds(...lists: Row[][]): void {
+  nextId = Math.max(0, ...lists.flat().map((r) => r.id)) + 1
+}
+
+/**
+ * A copy of a list with fresh ids. The two comparison sets must not share a row
+ * object or an id, or editing one would edit the other and React would reuse keys.
+ */
+export function copyRows(rows: Row[]): Row[] {
+  return rows.map((row) => ({ ...row, id: nextId++ }))
 }
 
 /** The starter list opens collapsed so the page begins short; a row added later opens expanded. */

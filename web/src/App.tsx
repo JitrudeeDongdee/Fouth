@@ -1,15 +1,42 @@
 import { useEffect, useMemo, useState } from 'react'
-import { defaultRows, KIND_LABEL, newRow, PRESETS, restoreIds, specSummary, type Kind, type Row } from './appliances'
-import { estimate } from './estimate'
+import { copyRows, defaultRows, KIND_LABEL, newRow, PRESETS, resumeIds, specSummary, type Kind, type Row } from './appliances'
+import { estimate, tariffCodes } from './estimate'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
-// Illustrative Ft (PEA, Jan–Apr 2025). Ft changes every four months; the user can edit it.
-const DEFAULT_FT = '0.3972'
+// Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
+// months, so it stays an editable field rather than a fixed rate.
+const DEFAULT_FT = '0.1623'
+
+/**
+ * The two utilities that bill households in Thailand. They charge the same baht per
+ * unit — what differs is the service area and the type code printed on the bill.
+ */
+const UTILITIES = [
+  { code: 'MEA', name: 'การไฟฟ้านครหลวง', short: 'กฟน.', area: 'กรุงเทพฯ · นนทบุรี · สมุทรปราการ' },
+  { code: 'PEA', name: 'การไฟฟ้าส่วนภูมิภาค', short: 'กฟภ.', area: '74 จังหวัดที่เหลือ' },
+] as const
+
+type UtilityCode = (typeof UTILITIES)[number]['code']
+
+const DEFAULT_UTILITY: UtilityCode = 'PEA'
+
+const isUtilityCode = (value: unknown): value is UtilityCode => UTILITIES.some((u) => u.code === value)
+
+/** The two sets the compare mode puts side by side. */
+type SetId = 'a' | 'b'
+
+const SET_IDS: SetId[] = ['a', 'b']
+
+const SET_LABEL: Record<SetId, string> = { a: 'ชุด A', b: 'ชุด B' }
 
 interface Saved {
+  /** Set A. Kept under the old name so a list saved before compare mode still loads. */
   rows: Row[]
+  rowsB?: Row[]
+  compare?: boolean
   ft: string
   days: string
+  utility?: UtilityCode
 }
 
 function load(): Saved | null {
@@ -31,16 +58,69 @@ function save(state: Saved) {
 
 const baht = (text: string) => Number(text).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+/**
+ * Money as whole satang. Two-decimal amounts of this size survive the multiply
+ * exactly once rounded, so subtracting the two sets cannot leave 178.86999999999998.
+ */
+const satang = (text: string) => Math.round(Number(text) * 100)
+
+const fromSatang = (amount: number) => (amount / 100).toFixed(2)
+
 export default function App() {
-  const saved = useMemo(load, [])
-  const [rows, setRows] = useState<Row[]>(() => (saved ? restoreIds(saved.rows) : defaultRows()))
+  const saved = useMemo(() => {
+    const state = load()
+    // Resume id numbering above both sets before any new row is made.
+    if (state) resumeIds(state.rows ?? [], state.rowsB ?? [])
+    return state
+  }, [])
+  const [rowsA, setRowsA] = useState<Row[]>(() => saved?.rows ?? defaultRows())
+  const [rowsB, setRowsB] = useState<Row[]>(() => saved?.rowsB ?? [])
+  const [compare, setCompare] = useState(saved?.compare ?? false)
+  const [editing, setEditing] = useState<SetId>('a')
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
+  // Saved state from before the utility picker existed has no utility field.
+  const [utility, setUtility] = useState<UtilityCode>(() => {
+    const code = saved?.utility
+    return isUtilityCode(code) ? code : DEFAULT_UTILITY
+  })
 
-  useEffect(() => save({ rows, ft, days }), [rows, ft, days])
+  useEffect(
+    () => save({ rows: rowsA, rowsB, compare, ft, days, utility }),
+    [rowsA, rowsB, compare, ft, days, utility],
+  )
+
+  // Set B exists only in compare mode, so outside it there is nothing to edit but A.
+  const shown: SetId = compare ? editing : 'a'
+  const rows = shown === 'a' ? rowsA : rowsB
+  const setRows = shown === 'a' ? setRowsA : setRowsB
 
   const dayCount = Number.parseInt(days, 10)
-  const result = useMemo(() => estimate(rows, ft, Number.isFinite(dayCount) ? dayCount : 0), [rows, ft, dayCount])
+  const validDays = Number.isFinite(dayCount) ? dayCount : 0
+  const resultA = useMemo(() => estimate(rowsA, utility, ft, validDays), [rowsA, utility, ft, validDays])
+  const resultB = useMemo(
+    () => (compare ? estimate(rowsB, utility, ft, validDays) : null),
+    [compare, rowsB, utility, ft, validDays],
+  )
+  const result = shown === 'b' && resultB ? resultB : resultA
+
+  // Both sets are priced the same way, so the difference is the whole point of the mode.
+  const difference =
+    resultB && !resultA.error && !resultB.error ? satang(resultB.total) - satang(resultA.total) : null
+
+  const startCompare = () => {
+    // Start B from a copy of A: a side-by-side of a list against an empty one says nothing.
+    setRowsB((current) => (current.length > 0 ? current : copyRows(rowsA)))
+    setCompare(true)
+    setEditing('b')
+  }
+  const stopCompare = () => {
+    setCompare(false)
+    setEditing('a')
+  }
+  const resetBfromA = () => setRowsB(copyRows(rowsA))
+
+  const chosenUtility = UTILITIES.find((u) => u.code === utility) ?? UTILITIES[1]
   const maxKwh = Math.max(1, ...result.appliances.map((a) => Number(a.kwhPerMonth)))
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
@@ -70,7 +150,31 @@ export default function App() {
                 {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
               </button>
             )}
+            <button className="link-btn" onClick={compare ? stopCompare : startCompare}>
+              {compare ? 'ปิดการเทียบ' : 'เทียบ A/B'}
+            </button>
           </div>
+
+          {compare && (
+            <div className="compare-bar">
+              <div className="tabs" role="tablist" aria-label="ชุดที่กำลังแก้">
+                {SET_IDS.map((id) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={shown === id}
+                    className={shown === id ? 'tab on' : 'tab'}
+                    onClick={() => setEditing(id)}
+                  >
+                    {SET_LABEL[id]}
+                  </button>
+                ))}
+              </div>
+              <button className="link-btn" onClick={resetBfromA}>
+                คัดลอก A → B
+              </button>
+            </div>
+          )}
 
           {rows.length === 0 && <p className="empty">ยังไม่มีเครื่องใช้ไฟฟ้า เลือกจากรายการด้านล่างเพื่อเริ่ม</p>}
 
@@ -169,28 +273,94 @@ export default function App() {
           </div>
 
           <div className="settings">
+            <div className="utility">
+              <span className="field-label" id="utility-label">
+                การไฟฟ้าที่ออกบิล
+              </span>
+              <div className="segmented" role="radiogroup" aria-labelledby="utility-label">
+                {UTILITIES.map((u) => (
+                  <button
+                    key={u.code}
+                    type="button"
+                    role="radio"
+                    aria-checked={utility === u.code}
+                    className={utility === u.code ? 'seg on' : 'seg'}
+                    onClick={() => setUtility(u.code)}
+                  >
+                    <span className="seg-name">
+                      {u.short} {u.name}
+                    </span>
+                    <span className="seg-area">{u.area}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <Field label="จำนวนวันในเดือน" unit="วัน" value={days} onChange={setDays} />
             <Field label="ค่า Ft" unit="บาท/หน่วย" value={ft} onChange={setFt} />
           </div>
           <p className="hint">
-            ค่า Ft เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นเป็นตัวอย่าง ตรวจค่าล่าสุดได้ที่เว็บไซต์ กฟภ. หรือ กฟน.
+            กฟน. กับ กฟภ. คิดค่าไฟหน่วยละเท่ากัน ต่างกันที่รหัสประเภทบนบิล · ค่า Ft
+            เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นคืองวด ก.ย.–ธ.ค. 2569
           </p>
         </section>
 
         <section className="panel result" aria-live="polite" aria-labelledby="result-title">
           <h2 id="result-title">ค่าไฟโดยประมาณต่อเดือน</h2>
+          {compare && (
+            <div className="compare">
+              {SET_IDS.map((id) => {
+                const set = id === 'a' ? resultA : resultB
+                return (
+                  <button
+                    key={id}
+                    className={shown === id ? 'compare-col on' : 'compare-col'}
+                    aria-pressed={shown === id}
+                    onClick={() => setEditing(id)}
+                  >
+                    <span className="muted small">{SET_LABEL[id]}</span>
+                    {set && !set.error ? (
+                      <>
+                        <span className="compare-total">฿{baht(set.total)}</span>
+                        <span className="muted small">
+                          {baht(set.totalKwh)} หน่วย · อัตรา {set.tariffCode}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="compare-total muted">–</span>
+                        <span className="muted small">ข้อมูลไม่ถูกต้อง</span>
+                      </>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {difference !== null && (
+            <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
+              {difference === 0
+                ? 'สองชุดค่าไฟเท่ากัน'
+                : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
+                    fromSatang(Math.abs(difference) * 12),
+                  )} ต่อปี`}
+            </p>
+          )}
+
           {result.error ? (
             <p className="error">ข้อมูลไม่ถูกต้อง: {result.error}</p>
           ) : (
             <>
-              <div className="total">
-                <span className="total-baht">฿{baht(result.total)}</span>
-                <span className="muted">
-                  {baht(result.totalKwh)} หน่วย (kWh) · อัตรา {result.tariffCode}
-                </span>
-              </div>
+              {!compare && (
+                <div className="total">
+                  <span className="total-baht">฿{baht(result.total)}</span>
+                  <span className="muted">
+                    {baht(result.totalKwh)} หน่วย (kWh) · {chosenUtility.short} อัตรา {result.tariffCode}
+                  </span>
+                </div>
+              )}
 
-              <h3>ใช้ไฟจากอะไรบ้าง</h3>
+              <h3>ใช้ไฟจากอะไรบ้าง{compare ? ` · ${SET_LABEL[shown]}` : ''}</h3>
               <ul className="bars">
                 {result.appliances.map((a, i) => (
                   <li key={i}>
@@ -207,7 +377,7 @@ export default function App() {
                 ))}
               </ul>
 
-              <h3>รายละเอียดบิล</h3>
+              <h3>รายละเอียดบิล{compare ? ` · ${SET_LABEL[shown]}` : ''}</h3>
               <table className="bill">
                 <tbody>
                   {result.energyLines.map((l) => (
@@ -258,9 +428,13 @@ export default function App() {
               <li>แอร์: BTU ÷ EER = วัตต์ แล้วคูณ % ที่คอมเพรสเซอร์ทำงาน (ค่าเริ่มต้น 70% เป็นการประมาณ)</li>
               <li>ตู้เย็น: kWh ต่อปีจากฉลากประหยัดไฟ ÷ 365 × จำนวนวัน</li>
               <li>
-                ใช้ไม่เกิน 150 หน่วยคิดอัตรา 1.1.1 เกินคิด 1.1.2 (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
+                ใช้ไม่เกิน 150 หน่วยคิดอัตรา {chosenUtility.short} {tariffCodes[utility].small} เกินคิด{' '}
+                {tariffCodes[utility].large} (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
               </li>
-              <li>อัตราค่าไฟตามตารางบ้านอยู่อาศัยของ กฟภ. (ม.ค. 2566) ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง</li>
+              <li>
+                อัตราก้าวหน้าบ้านอยู่อาศัย เริ่มใช้บิลเดือน ก.ย. 2569 (200 หน่วยแรกไม่เกินหน่วยละ 3 บาท)
+                กฟน. และ กฟภ. ใช้อัตราเดียวกัน ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง
+              </li>
             </ul>
           </details>
         </section>
