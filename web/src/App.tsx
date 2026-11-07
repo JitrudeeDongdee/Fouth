@@ -1,15 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
 import { defaultRows, KIND_LABEL, newRow, PRESETS, restoreIds, specSummary, type Kind, type Row } from './appliances'
-import { estimate } from './estimate'
+import { estimate, tariffCodes } from './estimate'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
-// Illustrative Ft (PEA, Jan–Apr 2025). Ft changes every four months; the user can edit it.
-const DEFAULT_FT = '0.3972'
+// Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
+// months, so it stays an editable field rather than a fixed rate.
+const DEFAULT_FT = '0.1623'
+
+/**
+ * The two utilities that bill households in Thailand. They charge the same baht per
+ * unit — what differs is the service area and the type code printed on the bill.
+ */
+const UTILITIES = [
+  { code: 'MEA', name: 'การไฟฟ้านครหลวง', short: 'กฟน.', area: 'กรุงเทพฯ · นนทบุรี · สมุทรปราการ' },
+  { code: 'PEA', name: 'การไฟฟ้าส่วนภูมิภาค', short: 'กฟภ.', area: '74 จังหวัดที่เหลือ' },
+] as const
+
+type UtilityCode = (typeof UTILITIES)[number]['code']
+
+const DEFAULT_UTILITY: UtilityCode = 'PEA'
+
+const isUtilityCode = (value: unknown): value is UtilityCode => UTILITIES.some((u) => u.code === value)
 
 interface Saved {
   rows: Row[]
   ft: string
   days: string
+  utility?: UtilityCode
 }
 
 function load(): Saved | null {
@@ -36,11 +53,20 @@ export default function App() {
   const [rows, setRows] = useState<Row[]>(() => (saved ? restoreIds(saved.rows) : defaultRows()))
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
+  // Saved state from before the utility picker existed has no utility field.
+  const [utility, setUtility] = useState<UtilityCode>(() => {
+    const code = saved?.utility
+    return isUtilityCode(code) ? code : DEFAULT_UTILITY
+  })
 
-  useEffect(() => save({ rows, ft, days }), [rows, ft, days])
+  useEffect(() => save({ rows, ft, days, utility }), [rows, ft, days, utility])
 
   const dayCount = Number.parseInt(days, 10)
-  const result = useMemo(() => estimate(rows, ft, Number.isFinite(dayCount) ? dayCount : 0), [rows, ft, dayCount])
+  const result = useMemo(
+    () => estimate(rows, utility, ft, Number.isFinite(dayCount) ? dayCount : 0),
+    [rows, utility, ft, dayCount],
+  )
+  const chosenUtility = UTILITIES.find((u) => u.code === utility) ?? UTILITIES[1]
   const maxKwh = Math.max(1, ...result.appliances.map((a) => Number(a.kwhPerMonth)))
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
@@ -169,11 +195,34 @@ export default function App() {
           </div>
 
           <div className="settings">
+            <div className="utility">
+              <span className="field-label" id="utility-label">
+                การไฟฟ้าที่ออกบิล
+              </span>
+              <div className="segmented" role="radiogroup" aria-labelledby="utility-label">
+                {UTILITIES.map((u) => (
+                  <button
+                    key={u.code}
+                    type="button"
+                    role="radio"
+                    aria-checked={utility === u.code}
+                    className={utility === u.code ? 'seg on' : 'seg'}
+                    onClick={() => setUtility(u.code)}
+                  >
+                    <span className="seg-name">
+                      {u.short} {u.name}
+                    </span>
+                    <span className="seg-area">{u.area}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <Field label="จำนวนวันในเดือน" unit="วัน" value={days} onChange={setDays} />
             <Field label="ค่า Ft" unit="บาท/หน่วย" value={ft} onChange={setFt} />
           </div>
           <p className="hint">
-            ค่า Ft เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นเป็นตัวอย่าง ตรวจค่าล่าสุดได้ที่เว็บไซต์ กฟภ. หรือ กฟน.
+            กฟน. กับ กฟภ. คิดค่าไฟหน่วยละเท่ากัน ต่างกันที่รหัสประเภทบนบิล · ค่า Ft
+            เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นคืองวด ก.ย.–ธ.ค. 2569
           </p>
         </section>
 
@@ -186,7 +235,7 @@ export default function App() {
               <div className="total">
                 <span className="total-baht">฿{baht(result.total)}</span>
                 <span className="muted">
-                  {baht(result.totalKwh)} หน่วย (kWh) · อัตรา {result.tariffCode}
+                  {baht(result.totalKwh)} หน่วย (kWh) · {chosenUtility.short} อัตรา {result.tariffCode}
                 </span>
               </div>
 
@@ -258,9 +307,13 @@ export default function App() {
               <li>แอร์: BTU ÷ EER = วัตต์ แล้วคูณ % ที่คอมเพรสเซอร์ทำงาน (ค่าเริ่มต้น 70% เป็นการประมาณ)</li>
               <li>ตู้เย็น: kWh ต่อปีจากฉลากประหยัดไฟ ÷ 365 × จำนวนวัน</li>
               <li>
-                ใช้ไม่เกิน 150 หน่วยคิดอัตรา 1.1.1 เกินคิด 1.1.2 (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
+                ใช้ไม่เกิน 150 หน่วยคิดอัตรา {chosenUtility.short} {tariffCodes[utility].small} เกินคิด{' '}
+                {tariffCodes[utility].large} (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
               </li>
-              <li>อัตราค่าไฟตามตารางบ้านอยู่อาศัยของ กฟภ. (ม.ค. 2566) ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง</li>
+              <li>
+                อัตราก้าวหน้าบ้านอยู่อาศัย เริ่มใช้บิลเดือน ก.ย. 2569 (200 หน่วยแรกไม่เกินหน่วยละ 3 บาท)
+                กฟน. และ กฟภ. ใช้อัตราเดียวกัน ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง
+              </li>
             </ul>
           </details>
         </section>

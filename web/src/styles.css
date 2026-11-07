@@ -283,6 +283,57 @@ input {
   border-top: 1px solid var(--line);
 }
 
+/* Which utility bills the household: two choices, so a segmented control, not a select. */
+.utility {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.seg {
+  font: inherit;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.seg:hover {
+  border-color: var(--accent);
+}
+
+.seg.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.seg-name {
+  font-weight: 600;
+}
+
+.seg-area {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 420px) {
+  .segmented {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .field {
   display: grid;
   gap: 4px;
