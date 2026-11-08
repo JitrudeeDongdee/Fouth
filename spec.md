@@ -72,6 +72,27 @@ so the difference is only ever the appliances:
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
 
+### The result as a printed slip (web only)
+
+The right-hand panel is drawn as a till slip fed out of a printer: a machine head with
+a status light, a slot, and the paper below it.
+
+- `.receipt` redefines `--ink`, `--muted`, `--line`, `--panel`, `--accent-soft` and
+  `--bar` locally, so the bars, bill table, compare columns and notes all pick up the
+  paper palette without rules of their own.
+- The torn bottom edge is a two-layer CSS mask (a conic-gradient tile repeated along the
+  bottom). A mask clips a `box-shadow` away, so the paper's shade is a `filter:
+  drop-shadow` instead.
+- A change reprints the slip, but only `PRINT_DELAY_MS` (600 ms) after the last edit, so
+  typing a number does not reprint per keystroke. The figures themselves update live
+  while typing; it is the paper that waits. The status light blinks during the wait.
+- The feed uses `steps(16)` rather than a smooth curve, because paper leaves a printer a
+  notch at a time, and `.paper-feed` clips it so it appears from the slot.
+- The animation is restarted by removing the class, forcing a reflow and re-adding it.
+  Remounting the node with a `key` would also work but would close the notes section
+  on every print.
+- `prefers-reduced-motion: reduce` turns off both the feed and the blinking light.
+
 ### Estimator assumptions (shown to the user on the page)
 
 - Air conditioner load factor 70% by default (the compressor cycles); user-editable.
@@ -148,8 +169,8 @@ divergence fails loudly instead of passing silently.
   `npm run build` succeeds; page checked at desktop and 375 px widths.
 - `feature/collapsible-appliances`: collapsible rows, the MEA/PEA picker with the
   September 2026 tariff, and the A/B compare mode. Engine tests pass on JVM and Node.js;
-  12 web tests pass; `npm run build` succeeds; both utilities and the compare mode checked
-  in the browser at desktop and 375 px. Not yet in a PR.
+  12 web tests pass; `npm run build` succeeds; both utilities, the compare mode and the
+  printed-slip UI checked in the browser at desktop and 375 px. PR #4 into `develop`.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

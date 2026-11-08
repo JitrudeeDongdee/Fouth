@@ -9,6 +9,15 @@
   --accent-soft: #fdf3dc;
   --bar: #2f7d5b;
   --error: #b42318;
+  /* The result is drawn as a till slip, so it carries its own paper palette. */
+  --paper: #fbf9f2;
+  --paper-ink: #23211b;
+  --paper-faint: #857f72;
+  --paper-line: #cdc7b8;
+  --paper-tint: #efe9d7;
+  --paper-bar: #4b6b58;
+  --shell: #343a36;
+  --shell-dark: #171b19;
   color-scheme: light;
 }
 
@@ -77,13 +86,13 @@ body {
   padding: 18px;
 }
 
-.result {
+.printer {
   position: sticky;
   top: 16px;
 }
 
 @media (max-width: 860px) {
-  .result {
+  .printer {
     position: static;
   }
 }
@@ -588,4 +597,168 @@ input {
   margin-top: 24px;
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   The result as a till slip fed out of a printer.
+
+   The machine is three stacked pieces: a body, the slot, and a clipping box
+   the paper slides down out of. Everything inside the slip inherits the paper
+   palette because `.receipt` redefines the page variables locally, so the bars,
+   the bill table and the notes all follow without their own rules.
+   --------------------------------------------------------------------------- */
+
+.printer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-radius: 14px 14px 4px 4px;
+  background: linear-gradient(180deg, var(--shell), var(--shell-dark));
+  color: #c9d1cb;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.printer-brand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printer-led {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #4f8469;
+  box-shadow: 0 0 6px rgba(79, 132, 105, 0.8);
+}
+
+.printer-led.busy {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+  animation: led-blink 0.7s steps(2, jump-none) infinite;
+}
+
+@keyframes led-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* The mouth of the machine: a dark gap the paper appears from. */
+.printer-slot {
+  height: 11px;
+  border-radius: 0 0 7px 7px;
+  background: linear-gradient(180deg, var(--shell-dark) 0 55%, var(--shell) 100%);
+  box-shadow: inset 0 4px 5px rgba(0, 0, 0, 0.65);
+}
+
+/* Clips the slip while it is still "inside" the machine. */
+.paper-feed {
+  overflow: hidden;
+  padding-bottom: 12px;
+}
+
+.receipt {
+  /* Local palette: every child rule written against these keeps working. */
+  --panel: var(--paper);
+  --ink: var(--paper-ink);
+  --muted: var(--paper-faint);
+  --line: var(--paper-line);
+  --accent-soft: var(--paper-tint);
+  --bar: var(--paper-bar);
+
+  --tooth: 9px;
+  position: relative;
+  margin: 0 6px;
+  padding: 18px 16px calc(18px + var(--tooth));
+  background-color: var(--paper);
+  /* Faint vertical grain, the way thermal paper prints. */
+  background-image: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.02) 0 2px, transparent 2px 6px);
+  color: var(--paper-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'IBM Plex Sans Thai', monospace;
+  font-size: 0.88rem;
+  /* A torn bottom edge. A mask clips a box-shadow away, so the shade is a filter. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth)) no-repeat,
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px var(--tooth) repeat-x;
+  mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth)) no-repeat,
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px var(--tooth) repeat-x;
+  filter: drop-shadow(0 7px 10px rgba(0, 0, 0, 0.22));
+}
+
+/* Stepped, because paper leaves a printer a notch at a time. */
+.receipt.feeding {
+  animation: feed 1.05s steps(16, end) both;
+}
+
+@keyframes feed {
+  from {
+    transform: translateY(-101%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.receipt h2 {
+  text-align: center;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.receipt-meta {
+  margin: 4px 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--paper-line);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--paper-faint);
+}
+
+.receipt .bill td {
+  border-bottom: 1px dashed var(--paper-line);
+}
+
+.receipt-foot {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--paper-line);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  font-size: 0.72rem;
+  color: var(--paper-faint);
+  letter-spacing: 0.08em;
+}
+
+.barcode {
+  width: min(180px, 70%);
+  height: 30px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--paper-ink) 0 1px,
+    transparent 1px 3px,
+    var(--paper-ink) 3px 5px,
+    transparent 5px 6px,
+    var(--paper-ink) 6px 9px,
+    transparent 9px 12px
+  );
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt.feeding {
+    animation: none;
+  }
+
+  .printer-led.busy {
+    animation: none;
+  }
 }
