@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { copyRows, defaultRows, KIND_LABEL, newRow, PRESETS, resumeIds, specSummary, type Kind, type Row } from './appliances'
 import { estimate, tariffCodes } from './estimate'
 
@@ -19,6 +19,9 @@ const UTILITIES = [
 type UtilityCode = (typeof UTILITIES)[number]['code']
 
 const DEFAULT_UTILITY: UtilityCode = 'PEA'
+
+/** Quiet time after the last edit before the slip is reprinted, so typing does not reprint per keystroke. */
+const PRINT_DELAY_MS = 600
 
 const isUtilityCode = (value: unknown): value is UtilityCode => UTILITIES.some((u) => u.code === value)
 
@@ -129,6 +132,36 @@ export default function App() {
   const setAllCollapsed = (collapsed: boolean) => setRows((all) => all.map((r) => ({ ...r, collapsed })))
   // Rows and result lines come back in the same order, so a row's kWh is at its own index.
   const kwhOf = (index: number) => (result.error ? null : result.appliances[index]?.kwhPerMonth)
+
+  // The slip is reprinted when anything it shows changes, but only once the edits stop.
+  const paper = useRef<HTMLDivElement>(null)
+  const firstPrint = useRef(true)
+  const [printing, setPrinting] = useState(false)
+  const [printedAt, setPrintedAt] = useState(() => new Date())
+  const slipContents = JSON.stringify([rowsA, rowsB, compare, shown, utility, ft, days])
+
+  useEffect(() => {
+    // The first slip is already printed by the class the markup ships with.
+    if (firstPrint.current) {
+      firstPrint.current = false
+      return
+    }
+    setPrinting(true)
+    const timer = setTimeout(() => {
+      setPrinting(false)
+      setPrintedAt(new Date())
+      const sheet = paper.current
+      if (!sheet) return
+      // Restarting a CSS animation needs the class gone and the layout recomputed
+      // before it goes back on; remounting instead would close the notes section.
+      sheet.classList.remove('feeding')
+      void sheet.offsetWidth
+      sheet.classList.add('feeding')
+    }, PRINT_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [slipContents])
+
+  const stamp = printedAt.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
     <div className="page">
@@ -304,8 +337,21 @@ export default function App() {
           </p>
         </section>
 
-        <section className="panel result" aria-live="polite" aria-labelledby="result-title">
+        <section className="printer" aria-labelledby="result-title">
+          <div className="printer-head" aria-hidden="true">
+            <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
+            <span className={printing ? 'printer-led busy' : 'printer-led'} />
+          </div>
+          <div className="printer-slot" aria-hidden="true" />
+
+          <div className="paper-feed" aria-live="polite">
+            <div className="receipt feeding" ref={paper}>
           <h2 id="result-title">ค่าไฟโดยประมาณต่อเดือน</h2>
+          <p className="receipt-meta">
+            {chosenUtility.short} · {days} วัน · Ft {ft}
+            <br />
+            พิมพ์เมื่อ {stamp}
+          </p>
           {compare && (
             <div className="compare">
               {SET_IDS.map((id) => {
@@ -437,6 +483,13 @@ export default function App() {
               </li>
             </ul>
           </details>
+
+          <div className="receipt-foot" aria-hidden="true">
+            <div className="barcode" />
+            <span>* ประมาณการ ไม่ใช่บิลจริง *</span>
+          </div>
+            </div>
+          </div>
         </section>
       </main>
 
