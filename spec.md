@@ -124,6 +124,19 @@ so any difference between the two bills comes only from the appliances:
   6. The rest of the bill: service charge, Ft, VAT.
 - The try box uses the calculator's utility and Ft.
 
+### Slip usage toggle (web only)
+
+- The usage section of each slip has a small toggle with two choices:
+  - "ตามเครื่อง": the per-appliance kWh bars, titled "ใช้ไฟจากอะไรบ้าง".
+  - "ขั้นบันได": the tier staircase, titled "ใช้ไฟถึงขั้นไหน", with one line naming
+    the tier the last unit landed in and its price. The amounts per tier stay in the
+    bill table below.
+- One choice applies to every slip, so two slips in compare mode always draw the same
+  thing. It is a per-viewer display preference in `localStorage`
+  (`fouth-slip-usage-view`), not bill data and not in the URL. Toggling does not reprint
+  the slip.
+- The staircase is the same `Stairs` component the ขั้นบันได tab and learn page use.
+
 ### Tiers tab: the progressive rate step by step (web only)
 
 - The bill and the tiers table are two pages of the same app, picked by `?view=bill` or
@@ -320,6 +333,9 @@ divergence fails loudly instead of passing silently.
   (right); both rate tables are correct; 150 → 151 units goes ฿505.74 → ฿537.28 (+31.54);
   "บ้านของฉัน" 48.66 units gives ฿162.83, matching the bill; Back returns to the
   calculator. At 375 px there is no overflow.
+  Slip usage toggle: checked in the browser. Switching to ขั้นบันได draws 5 steps with
+  "ขั้นที่ 3 (25–200) หน่วยละ ฿3.0000" for 48.66 units, and the choice is stored. In
+  compare mode both slips follow one toggle and nothing reprints.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

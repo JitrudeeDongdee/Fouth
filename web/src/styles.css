@@ -1471,3 +1471,55 @@ input {
 .learn-link:hover {
   text-decoration: underline;
 }
+
+/* The slip's usage section: a small toggle between the appliance bars and the staircase. */
+.usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 20px 0 8px;
+}
+
+.usage-head h3 {
+  margin: 0;
+}
+
+.usage-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.usage-toggle button {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.usage-toggle button.on {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.slip-stairs {
+  display: grid;
+  gap: 6px;
+}
+
+.slip-stairs .stairs {
+  height: 120px;
+}
+
+.slip-stairs p {
+  margin: 0;
+  color: var(--muted);
+}

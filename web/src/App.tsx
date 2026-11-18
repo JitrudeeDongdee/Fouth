@@ -14,7 +14,7 @@ import {
 import { estimate, tariffCodes, type Estimate } from './estimate'
 import { baht } from './format'
 import { LearnPage } from './LearnPage'
-import { TierPanel } from './TierPanel'
+import { currentTier, Stairs, tierRange, TierPanel } from './TierPanel'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
 // Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
@@ -119,6 +119,24 @@ const isPlainClick = (e: { button: number; metaKey: boolean; ctrlKey: boolean; s
 const presetSummary = (preset: Preset) =>
   preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
 
+/** What the slip's usage section draws. A per-viewer display preference, not bill data. */
+type UsageView = 'appliances' | 'tiers'
+
+const USAGE_VIEWS: { id: UsageView; title: string }[] = [
+  { id: 'appliances', title: 'ตามเครื่อง' },
+  { id: 'tiers', title: 'ขั้นบันได' },
+]
+
+const USAGE_VIEW_KEY = 'fouth-slip-usage-view'
+
+function loadUsageView(): UsageView {
+  try {
+    return localStorage.getItem(USAGE_VIEW_KEY) === 'tiers' ? 'tiers' : 'appliances'
+  } catch {
+    return 'appliances'
+  }
+}
+
 /** Below this width the layout is one column and the sidebar slides over the page. */
 const NARROW = '(max-width: 860px)'
 
@@ -196,6 +214,15 @@ export default function App() {
   // The result area shows either the printed bill or how the progressive rate was applied.
   const [view, setView] = useState<ResultView>(() => pageFromUrl().view ?? 'bill')
   const [learn, setLearn] = useState(() => pageFromUrl().learn)
+  // One choice for every slip, so two slips in compare mode always draw the same thing.
+  const [usageView, setUsageView] = useState<UsageView>(loadUsageView)
+  useEffect(() => {
+    try {
+      localStorage.setItem(USAGE_VIEW_KEY, usageView)
+    } catch {
+      // Storage can be unavailable; the slips then start with the appliance bars.
+    }
+  }, [usageView])
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -856,6 +883,8 @@ export default function App() {
                       stamp={stampOf(id)}
                       utilityShort={chosenUtility.short}
                       maxKwh={maxKwh}
+                      usageView={usageView}
+                      onUsageView={setUsageView}
                     >
                       {notes(id === 'a')}
                     </Slip>
@@ -886,9 +915,13 @@ function Slip(props: {
   stamp: string
   utilityShort: string
   maxKwh: number
+  /** What the usage section of the slip draws: kWh per appliance, or the tier staircase. */
+  usageView: UsageView
+  onUsageView: (view: UsageView) => void
   children?: ReactNode
 }) {
   const { result, setLabel } = props
+  const top = result.error ? null : result.tiers[currentTier(result.tiers)]
   return (
     <div className={props.editing ? 'receipt feeding editing' : 'receipt feeding'} data-set={props.set}>
       {setLabel && (
@@ -921,22 +954,48 @@ function Slip(props: {
             </span>
           </div>
 
-          <h3>ใช้ไฟจากอะไรบ้าง</h3>
-          <ul className="bars">
-            {result.appliances.map((a, i) => (
-              <li key={i}>
-                <div className="bar-label">
-                  <span>{a.name}</span>
-                  <span className="muted">
-                    {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
-                  </span>
-                </div>
-                <div className="bar-track">
-                  <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="usage-head">
+            <h3>{props.usageView === 'appliances' ? 'ใช้ไฟจากอะไรบ้าง' : 'ใช้ไฟถึงขั้นไหน'}</h3>
+            <div className="usage-toggle" role="group" aria-label="แสดงการใช้ไฟแบบ">
+              {USAGE_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  className={props.usageView === v.id ? 'on' : ''}
+                  aria-pressed={props.usageView === v.id}
+                  onClick={() => props.onUsageView(v.id)}
+                >
+                  {v.title}
+                </button>
+              ))}
+            </div>
+          </div>
+          {props.usageView === 'appliances' ? (
+            <ul className="bars">
+              {result.appliances.map((a, i) => (
+                <li key={i}>
+                  <div className="bar-label">
+                    <span>{a.name}</span>
+                    <span className="muted">
+                      {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
+                    </span>
+                  </div>
+                  <div className="bar-track">
+                    <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="slip-stairs">
+              <Stairs tiers={result.tiers} />
+              {top && (
+                <p className="small">
+                  หน่วยสุดท้ายอยู่ขั้นที่ {currentTier(result.tiers) + 1} ({tierRange(top)}) หน่วยละ ฿
+                  {Number(top.pricePerKwh).toFixed(4)} · แต่ละขั้นคิดเงินตามรายละเอียดด้านล่าง
+                </p>
+              )}
+            </div>
+          )}
 
           <h3>รายละเอียดบิล</h3>
           <table className="bill">

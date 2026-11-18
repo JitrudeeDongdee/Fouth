@@ -4,6 +4,45 @@ import { baht, price } from './format'
 /** kWh per month up to which the estimate uses the small-household rate (the engine's limit). */
 export const SMALL_HOUSEHOLD_LIMIT = Number(smallHouseholdLimitKwh())
 
+type TierRow = Estimate['tiers'][number]
+
+/** The tier the last unit landed in; nothing used means the first. */
+export const currentTier = (tiers: TierRow[]) => tiers.reduce((last, t, i) => (Number(t.kwh) > 0 ? i : last), 0)
+
+/** "25–200", or "400 ขึ้นไป" for the open-ended last tier. */
+export const tierRange = (t: TierRow) => (t.toKwh === '' ? `${t.fromKwh} ขึ้นไป` : `${t.fromKwh}–${t.toKwh}`)
+
+/**
+ * The progressive rate as a staircase: one column per tier, taller where a unit costs
+ * more, filled by how much of that tier's range was used. The open-ended last tier fills
+ * once reached. Decorative; the numbers it draws are always in a table next to it.
+ */
+export function Stairs(props: { tiers: TierRow[] }) {
+  const { tiers } = props
+  const prices = tiers.map((t) => Number(t.pricePerKwh))
+  const low = Math.min(...prices)
+  const high = Math.max(...prices)
+  const current = currentTier(tiers)
+  const fill = (t: TierRow) =>
+    t.toKwh === '' ? (Number(t.kwh) > 0 ? 1 : 0) : Number(t.kwh) / (Number(t.toKwh) - Number(t.fromKwh))
+  return (
+    <div className="stairs" style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }} aria-hidden="true">
+      {tiers.map((t, i) => {
+        const rise = high === low ? 1 : (Number(t.pricePerKwh) - low) / (high - low)
+        return (
+          <div className={i === current ? 'step now' : 'step'} key={t.fromKwh}>
+            <span className="step-price">฿{price(t.pricePerKwh)}</span>
+            <div className="step-block" style={{ height: `${35 + rise * 65}%` }}>
+              <div className="step-fill" style={{ width: `${Math.min(1, fill(t)) * 100}%` }} />
+            </div>
+            <span className="step-range">{tierRange(t)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /**
  * How the progressive rate priced one bill: every tier of the tariff as a step, the part
  * of each step the usage filled, and the sum each step contributes. Steps the usage does
@@ -31,17 +70,11 @@ export function TierPanel(props: {
 
   const tiers = result.tiers
   const total = Number(result.totalKwh)
-  const prices = tiers.map((t) => Number(t.pricePerKwh))
-  const low = Math.min(...prices)
-  const high = Math.max(...prices)
-  // The step the last unit landed in; nothing used means the first.
-  const current = tiers.reduce((last, t, i) => (Number(t.kwh) > 0 ? i : last), 0)
+  const current = currentTier(tiers)
   const next = tiers[current + 1]
   const toNext = next ? Number(tiers[current].toKwh) - total : null
   const small = result.tariffCode === props.smallCode
-  const fill = (t: (typeof tiers)[number]) =>
-    t.toKwh === '' ? (Number(t.kwh) > 0 ? 1 : 0) : Number(t.kwh) / (Number(t.toKwh) - Number(t.fromKwh))
-  const range = (t: (typeof tiers)[number]) => (t.toKwh === '' ? `${t.fromKwh} ขึ้นไป` : `${t.fromKwh}–${t.toKwh}`)
+  const range = tierRange
 
   return (
     <div className="tier-panel panel">
@@ -58,20 +91,7 @@ export function TierPanel(props: {
           : `ใช้เกิน ${SMALL_HOUSEHOLD_LIMIT} หน่วย จึงคิดอัตรา ${props.largeCode} (ขั้นแรกกว้างกว่า ค่าบริการสูงกว่า)`}
       </p>
 
-      <div className="stairs" style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }} aria-hidden="true">
-        {tiers.map((t, i) => {
-          const rise = high === low ? 1 : (Number(t.pricePerKwh) - low) / (high - low)
-          return (
-            <div className={i === current ? 'step now' : 'step'} key={t.fromKwh}>
-              <span className="step-price">฿{price(t.pricePerKwh)}</span>
-              <div className="step-block" style={{ height: `${35 + rise * 65}%` }}>
-                <div className="step-fill" style={{ width: `${Math.min(1, fill(t)) * 100}%` }} />
-              </div>
-              <span className="step-range">{range(t)}</span>
-            </div>
-          )
-        })}
-      </div>
+      <Stairs tiers={tiers} />
 
       <table className="tier-table">
         <thead>
