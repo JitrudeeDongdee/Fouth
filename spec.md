@@ -160,19 +160,60 @@ so any difference between the two bills comes only from the appliances:
 
 ### Adding an appliance (web only)
 
-- One "+ เพิ่มเครื่องใช้ไฟฟ้า" button sits under the list, replacing the row of preset
-  chips. In compare mode it reads "… ลงชุด A/B", naming the set being edited.
-- The button opens a modal. It is a native `<dialog>` opened with `showModal()`, so the
-  browser provides the focus trap, Esc, and returning focus on close; a backdrop click
-  also closes it.
-  - It lists every `PRESETS` entry as a card: icon, name, and the spec it will add, in
-    the same words a collapsed row uses (`specSummary`). The blank "อื่น ๆ" preset reads
-    "กรอกสเปคเอง".
-  - Picking a card appends the row to the set being edited, closes the modal, and
-    scrolls the new row into view.
-- On a desktop the modal is centred with an auto-fill grid. Under 560 px it is a bottom
-  sheet with two columns, which scrolls; `top` is unset, because a modal dialog is
-  pinned to both edges.
+- One "+ เพิ่มเครื่องใช้ไฟฟ้า" button sits under the list. In compare mode the picker says
+  which set the appliance goes into ("ลงชุด A/B").
+- The picker is `AppliancePicker`, a native `<dialog>` (focus trap, Esc, backdrop click),
+  in two steps:
+  1. **Categories**, a grid with line-art icons (`Icon.tsx`, inline SVG in
+     `currentColor`; no emoji anywhere in the app). Each category shows how many models
+     and brands it has. "อื่น ๆ" adds a blank card straight away.
+  2. **The category's list**, which scrolls inside the dialog:
+     - First, the no-brand default(s), marked "ค่าตั้งต้น". These are the original
+       presets, e.g. แอร์ 12,000 BTU at EER 12.
+     - Then brand chips to narrow the list, and the brand models. Each model shows its
+       description, the spec it adds, and a "ที่มา" link to the manufacturer page
+       (opens in a new tab).
+- Picking adds one card named "<category> <brand> <model>", closes the dialog, and
+  scrolls the card into view. Reopening starts at the categories.
+- On a phone the dialog is a bottom sheet with two category columns.
+
+### Appliance catalog (web only)
+
+- `catalog.ts` defines the categories (แอร์, ตู้เย็น, ทีวี, พัดลม, หลอดไฟ, เครื่องทำน้ำอุ่น,
+  หม้อหุงข้าว, เครื่องซักผ้า, คอมพิวเตอร์, อื่น ๆ), each with its generic presets and models.
+- `catalog-data.ts` holds the brand models. Each model's spec comes from the
+  manufacturer's own page (`source`); hours of use and air-con load % stay the
+  category's assumption, which the user edits.
+- Data rules, applied by the merge script when the research was turned into
+  `catalog-data.ts` and partly re-checked by `catalog.test.ts`:
+  - The source is https on the brand's own domain. Carrier's spec PDFs are on
+    shareddocs.com, which Carrier's Thai pages link to.
+  - The figure is positive and plausible. Each model appears once.
+  - Air-con EER = rated capacity ÷ rated input watts, the same basis for every brand.
+    A printed EER is used only when there is no input figure.
+  - A figure that is a maximum, or a washer total that includes its water heater, is
+    left out, because at the category's hours of use it would overstate a month several
+    times over. Apple computers (adapter/maximum power) are left out too, so
+    คอมพิวเตอร์ has only its generic default.
+  - Some figures come from the maker's site outside Thailand for the same model code
+    (Sony TVs from Sony Singapore; Xiaomi fans and bulbs from mi.com outside /th). The
+    card's description says so.
+  - Philips Thailand gives only a barcode as the model, so the product name is shown and
+    the barcode goes in the description.
+- Contents as researched on 2026-11-18, 98 models in all:
+  - แอร์: 37 (Carrier, Daikin, LG, Mitsubishi Electric, Panasonic, Samsung, Sharp)
+  - ตู้เย็น: 13 (LG, Panasonic)
+  - ทีวี: 10 (Sony, Xiaomi)
+  - พัดลม: 12 (Hatari, Mitsubishi Electric, Xiaomi)
+  - หลอดไฟ: 9 (Philips, Lamptan, Xiaomi)
+  - เครื่องทำน้ำอุ่น: 9 (Stiebel Eltron, Mazuma)
+  - หม้อหุงข้าว: 7 (Toshiba, Panasonic)
+  - เครื่องซักผ้า: 1 (Toshiba top-load)
+- Brands left out because their pages give no usable figure: Haier air-con (maximum
+  only); Samsung/Hitachi/Toshiba/Sharp/Mitsubishi/Haier fridges (no kWh/year); LG/TCL/
+  Hisense/Sharp TVs (no power row); Samsung TVs (maximum only); most washers (maximum
+  including heater).
+- Known gaps: no 1-door fridges and no 32" TVs in the set; only one washer.
 
 ### App frame: top bar + sidebar (web only)
 
@@ -338,6 +379,11 @@ divergence fails loudly instead of passing silently.
   One card = one appliance: 17 web tests (2 new for the migration). In the browser a
   saved "หลอดไฟ LED × 5" became 5 cards in both sets (ids unique, no `quantity` left) and
   the total stayed ฿162.83 at 48.66 units. No "จำนวน" field remains.
+  Appliance picker and catalog: 21 web tests (4 for the catalog). Checked in the browser:
+  10 categories with icons and model counts, no emoji left; ตู้เย็น → Panasonic narrows
+  to 6; picking NR-BX421BPST adds "ตู้เย็น Panasonic NR-BX421BPST" at 385.44 kWh/ปี;
+  "ที่มา" opens the maker page in a new tab; reopening starts at the categories. At
+  375 px it is a bottom sheet whose list scrolls, with no overflow.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

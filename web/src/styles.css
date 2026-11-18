@@ -1088,52 +1088,6 @@ input {
   margin-bottom: 14px;
 }
 
-.preset-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-}
-
-.preset {
-  font: inherit;
-  width: 100%;
-  height: 100%;
-  display: grid;
-  justify-items: start;
-  gap: 2px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.preset:hover,
-.preset:focus-visible {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.preset-icon {
-  font-size: 1.5rem;
-  line-height: 1.2;
-}
-
-.preset-name {
-  font-weight: 600;
-  font-size: 0.92rem;
-}
-
-.preset-spec {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
 /* On a phone the picker rises from the bottom as a sheet. A modal dialog is pinned to
    both edges, so `top` is let go or an auto height would stretch to the full screen. */
 @media (max-width: 560px) {
@@ -1146,8 +1100,8 @@ input {
     border-radius: 16px 16px 0 0;
   }
 
-  .preset-grid {
-    grid-template-columns: 1fr 1fr;
+  .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .modal[open] {
@@ -1504,4 +1458,180 @@ input {
 .slip-stairs p {
   margin: 0;
   color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Appliance picker: categories with line icons, then a scrolling list of models.
+   --------------------------------------------------------------------------- */
+
+.icon {
+  display: block;
+  flex: none;
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.nav-item.on .nav-icon {
+  color: var(--ink);
+}
+
+.modal-head h2 {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-back {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.category-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.category {
+  font: inherit;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 16px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.category .icon {
+  color: var(--bar);
+  margin-bottom: 4px;
+}
+
+.category:hover,
+.category:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.category-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.category-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Step 2 scrolls inside the dialog, so the header and back button stay put. */
+.picker-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-right: -6px;
+  padding-right: 6px;
+}
+
+.model-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.model-item {
+  position: relative;
+}
+
+.model {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 56px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model.generic {
+  padding-right: 12px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model.generic .icon {
+  color: var(--bar);
+}
+
+.model:hover,
+.model:focus-visible {
+  border-color: var(--accent);
+}
+
+.model-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.model-name {
+  font-size: 0.92rem;
+}
+
+.model-desc,
+.model-spec {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+/* The source link sits over the card's right edge, outside the pick button. */
+.model-source {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 0.72rem;
+  color: var(--bar);
+}
+
+.brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0;
+  background: var(--panel);
 }

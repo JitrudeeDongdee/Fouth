@@ -4,7 +4,6 @@ import {
   defaultRows,
   KIND_LABEL,
   newRow,
-  PRESETS,
   resumeIds,
   specSummary,
   splitByQuantity,
@@ -14,6 +13,8 @@ import {
 } from './appliances'
 import { estimate, tariffCodes, type Estimate } from './estimate'
 import { baht } from './format'
+import { AppliancePicker } from './AppliancePicker'
+import { Icon } from './Icon'
 import { LearnPage } from './LearnPage'
 import { currentTier, Stairs, tierRange } from './TierPanel'
 
@@ -103,10 +104,6 @@ function urlFor(page: PageState): string {
 /** A plain left click on an in-page link is handled by the page; anything else is the browser's. */
 const isPlainClick = (e: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }) =>
   e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
-
-/** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
-const presetSummary = (preset: Preset) =>
-  preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
 
 /** What the slip's usage section draws. A per-viewer display preference, not bill data. */
 type UsageView = 'appliances' | 'tiers'
@@ -523,8 +520,8 @@ export default function App() {
                   openLearn(true)
                 }}
               >
-                <span className="nav-icon" aria-hidden="true">
-                  📘
+                <span className="nav-icon">
+                  <Icon name="book" size={22} />
                 </span>
                 <span className="nav-text">
                   <span className="nav-title">ค่าไฟขั้นบันไดคิดยังไง</span>
@@ -537,14 +534,14 @@ export default function App() {
           <p className="nav-label">ไปที่</p>
           <ul className="nav-list">
             {[
-              { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
-              { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
-              { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
+              { id: 'appliances-title', icon: 'list' as const, title: 'เครื่องใช้ไฟฟ้า' },
+              { id: 'result', icon: 'receipt' as const, title: 'ผลคำนวณ' },
+              { id: 'how', icon: 'info' as const, title: 'วิธีคำนวณ' },
             ].map((link) => (
               <li key={link.id}>
                 <button className="nav-item" title={link.title} onClick={() => goTo(link.id)}>
-                  <span className="nav-icon" aria-hidden="true">
-                    {link.icon}
+                  <span className="nav-icon">
+                    <Icon name={link.icon} size={22} />
                   </span>
                   <span className="nav-text">
                     <span className="nav-title">{link.title}</span>
@@ -710,39 +707,7 @@ export default function App() {
               เพิ่มเครื่องใช้ไฟฟ้า{compare ? ` ลง${SET_LABEL[shown]}` : ''}
             </button>
 
-            <dialog
-              className="modal"
-              ref={picker}
-              aria-labelledby="picker-title"
-              // A click that lands on the <dialog> itself, not its content, is a click on the backdrop.
-              onClick={(e) => e.target === e.currentTarget && picker.current?.close()}
-            >
-              <div className="modal-body">
-                <div className="modal-head">
-                  <h2 id="picker-title">
-                    เพิ่มเครื่องใช้ไฟฟ้า
-                    {compare && <span className="muted small"> · ลง{SET_LABEL[shown]}</span>}
-                  </h2>
-                  <button className="icon-btn" onClick={() => picker.current?.close()} aria-label="ปิด">
-                    ✕
-                  </button>
-                </div>
-                <ul className="preset-grid">
-                  {PRESETS.map((p) => (
-                    <li key={p.name}>
-                      <button className="preset" onClick={() => addPreset(p)}>
-                        <span className="preset-icon" aria-hidden="true">
-                          {p.icon}
-                        </span>
-                        <span className="preset-name">{p.name}</span>
-                        <span className="preset-spec">{presetSummary(p)}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <p className="hint">ค่าที่ใส่ให้เป็นค่าทั่วไป แก้สเปคและชั่วโมงใช้งานได้หลังเพิ่ม</p>
-              </div>
-            </dialog>
+            <AppliancePicker dialog={picker} target={compare ? `ลง${SET_LABEL[shown]}` : null} onPick={addPreset} />
 
             <div className="settings">
               <div className="utility">
