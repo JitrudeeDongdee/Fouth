@@ -38,6 +38,27 @@ const BILL_MODES = [
   { compare: true, title: 'เปรียบเทียบ 2 บิล', detail: 'ชุด A กับ B แยกคนละใบ' },
 ] as const
 
+/**
+ * The bill mode lives in the URL (`?mode=single` / `?mode=compare`), so a link opens the
+ * same mode and the browser's Back button steps between modes. Anything else reads as
+ * "not given", and the mode saved in localStorage applies.
+ */
+type ModeParam = 'single' | 'compare'
+
+const modeParam = (compare: boolean): ModeParam => (compare ? 'compare' : 'single')
+
+function modeFromUrl(): boolean | null {
+  const value = new URLSearchParams(window.location.search).get('mode')
+  return value === 'compare' ? true : value === 'single' ? false : null
+}
+
+/** The current address with only `mode` changed, so any other query or hash is kept. */
+function urlWithMode(compare: boolean): string {
+  const url = new URL(window.location.href)
+  url.searchParams.set('mode', modeParam(compare))
+  return url.pathname + url.search + url.hash
+}
+
 /** Below this width the layout is one column and the sidebar slides over the page. */
 const NARROW = '(max-width: 860px)'
 
@@ -101,9 +122,18 @@ export default function App() {
     if (state) resumeIds(state.rows ?? [], state.rowsB ?? [])
     return state
   }, [])
-  const [rowsA, setRowsA] = useState<Row[]>(() => saved?.rows ?? defaultRows())
-  const [rowsB, setRowsB] = useState<Row[]>(() => saved?.rowsB ?? [])
-  const [compare, setCompare] = useState(saved?.compare ?? false)
+  const initial = useMemo(() => {
+    const a = saved?.rows ?? defaultRows()
+    // A link's ?mode= wins over the mode this browser last used.
+    const compare = modeFromUrl() ?? saved?.compare ?? false
+    const savedB = saved?.rowsB ?? []
+    // Opening ?mode=compare with no set B yet starts B from a copy of A, as the menu does.
+    const b = compare && savedB.length === 0 ? copyRows(a) : savedB
+    return { a, b, compare }
+  }, [saved])
+  const [rowsA, setRowsA] = useState<Row[]>(initial.a)
+  const [rowsB, setRowsB] = useState<Row[]>(initial.b)
+  const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
@@ -132,7 +162,6 @@ export default function App() {
   )
   const result = shown === 'b' && resultB ? resultB : resultA
 
-
   const startCompare = () => {
     // Start B from a copy of A: a side-by-side of a list against an empty one says nothing.
     setRowsB((current) => (current.length > 0 ? current : copyRows(rowsA)))
@@ -145,11 +174,38 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
+  // Mode → URL. The first write replaces the entry (the page's own address gains ?mode=),
+  // later ones add an entry so Back returns to the previous mode. A change that came from
+  // Back/Forward already matches the URL, so it writes nothing.
+  const urlSynced = useRef(false)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('mode') === modeParam(compare)) {
+      urlSynced.current = true
+      return
+    }
+    if (urlSynced.current) window.history.pushState(null, '', urlWithMode(compare))
+    else window.history.replaceState(null, '', urlWithMode(compare))
+    urlSynced.current = true
+  }, [compare])
+
+  // URL → mode, when Back/Forward moves between entries.
+  useEffect(() => {
+    const onPop = () => {
+      const fromUrl = modeFromUrl()
+      if (fromUrl === null || fromUrl === compare) return
+      if (fromUrl) startCompare()
+      else stopCompare()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+    // Re-subscribed when the mode or set A changes, so startCompare copies the current A.
+  }, [compare, rowsA])
+
   // Sidebar: folds to an icon rail on a wide screen, slides over the page on a narrow one.
   const narrow = useNarrow()
   const [navCollapsed, setNavCollapsed] = useState(loadNavCollapsed)
   const [navOpen, setNavOpen] = useState(false)
-  const firstNavItem = useRef<HTMLButtonElement>(null)
+  const firstNavItem = useRef<HTMLAnchorElement>(null)
   const sidebar = useRef<HTMLElement>(null)
   const burger = useRef<HTMLButtonElement>(null)
 
@@ -313,12 +369,18 @@ export default function App() {
           <ul className="nav-list">
             {BILL_MODES.map((m, i) => (
               <li key={m.title}>
-                <button
+                {/* A real link, so it can be copied or opened in a new tab; a plain click stays in the page. */}
+                <a
                   ref={i === 0 ? firstNavItem : undefined}
+                  href={urlWithMode(m.compare)}
                   className={compare === m.compare ? 'nav-item on' : 'nav-item'}
-                  aria-current={compare === m.compare ? 'true' : undefined}
+                  aria-current={compare === m.compare ? 'page' : undefined}
                   title={m.title}
-                  onClick={() => chooseMode(m.compare)}
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                    e.preventDefault()
+                    chooseMode(m.compare)
+                  }}
                 >
                   <span className={m.compare ? 'mode-pic two' : 'mode-pic'} aria-hidden="true">
                     <span />
@@ -328,7 +390,7 @@ export default function App() {
                     <span className="nav-title">{m.title}</span>
                     <span className="nav-detail">{m.detail}</span>
                   </span>
-                </button>
+                </a>
               </li>
             ))}
           </ul>

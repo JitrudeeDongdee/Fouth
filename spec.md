@@ -65,6 +65,19 @@ so any difference between the two bills comes only from the appliances:
   every copied row a fresh id, so the two sets never share a row or a React key.
 - The mode is picked in the sidebar (see "App frame" below): บิลเดียว or เปรียบเทียบ 2 บิล.
   The top bar shows the current mode as a chip.
+- The mode is in the URL: `?mode=single` or `?mode=compare`.
+  - On load, a valid `?mode=` wins over the mode saved in `localStorage`. A missing or
+    unknown value falls back to the saved mode, and the URL is corrected with
+    `replaceState`, keeping any other query parameters and the hash.
+  - Changing the mode adds a history entry (`pushState`), so Back/Forward step between
+    modes; `popstate` applies the mode from the URL.
+  - Opening `?mode=compare` with no set B yet copies A into B, the same as choosing it
+    from the menu.
+  - The sidebar's mode items are real `<a href="?mode=…">` links, so they can be copied
+    or opened in a new tab; a plain click is handled in the page without a reload.
+  - Only the mode is in the URL. The appliance lists stay in each viewer's
+    `localStorage`, so a shared link opens the right mode with the viewer's own
+    appliances.
 - One set is edited at a time (tabs), while the result prints **two separate slips**,
   one per set, each with its own total, tariff code, usage bars and bill table. The
   slip of the set being edited is marked "กำลังแก้ชุดนี้"; the other has "แก้ชุดนี้" to
@@ -209,6 +222,10 @@ divergence fails loudly instead of passing silently.
   bottom sheet, no horizontal overflow). Sidebar checked at 1280 px (rail fold kept
   after reload, "วิธีคำนวณ" opens the notes) and 375 px (overlay opens with focus on the
   first item; Esc, backdrop and picking a mode close it; `inert` when closed).
+  `?mode=` checked in the browser: load without it adds it without a new history entry;
+  a menu click pushes one; Back and Forward switch the mode; opening `?mode=compare`
+  over a saved single mode with no set B copies A (fresh ids); `?mode=foo&x=1#how`
+  falls back to the saved mode and keeps `x=1` and `#how`.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
