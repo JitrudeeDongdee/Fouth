@@ -91,6 +91,22 @@ so any difference between the two bills comes only from the appliances:
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
 
+### Adding an appliance (web only)
+
+- One "+ เพิ่มเครื่องใช้ไฟฟ้า" button sits under the list, replacing the row of preset
+  chips. In compare mode it reads "… ลงชุด A/B", naming the set being edited.
+- The button opens a modal. It is a native `<dialog>` opened with `showModal()`, so the
+  browser provides the focus trap, Esc, and returning focus on close; a backdrop click
+  also closes it.
+  - It lists every `PRESETS` entry as a card: icon, name, and the spec it will add, in
+    the same words a collapsed row uses (`specSummary`). The blank "อื่น ๆ" preset reads
+    "กรอกสเปคเอง".
+  - Picking a card appends the row to the set being edited, closes the modal, and
+    scrolls the new row into view.
+- On a desktop the modal is centred with an auto-fill grid. Under 560 px it is a bottom
+  sheet with two columns, which scrolls; `top` is unset, because a modal dialog is
+  pinned to both edges.
+
 ### App frame: top bar + sidebar (web only)
 
 - A sticky top bar (`--topbar-h`, 52 px) holds the ☰ menu button, the name, and the
@@ -226,6 +242,9 @@ divergence fails loudly instead of passing silently.
   a menu click pushes one; Back and Forward switch the mode; opening `?mode=compare`
   over a saved single mode with no set B copies A (fresh ids); `?mode=foo&x=1#how`
   falls back to the saved mode and keeps `x=1` and `#how`.
+  Add-appliance modal checked at 1280 px (centred, 11 presets, picking พัดลม in compare
+  mode added it to set A and closed the modal) and 375 px (bottom sheet, two columns,
+  scrolls).
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { copyRows, defaultRows, KIND_LABEL, newRow, PRESETS, resumeIds, specSummary, type Kind, type Row } from './appliances'
+import {
+  copyRows,
+  defaultRows,
+  KIND_LABEL,
+  newRow,
+  PRESETS,
+  resumeIds,
+  specSummary,
+  type Kind,
+  type Preset,
+  type Row,
+} from './appliances'
 import { estimate, tariffCodes } from './estimate'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
@@ -58,6 +69,10 @@ function urlWithMode(compare: boolean): string {
   url.searchParams.set('mode', modeParam(compare))
   return url.pathname + url.search + url.hash
 }
+
+/** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
+const presetSummary = (preset: Preset) =>
+  preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
 
 /** Below this width the layout is one column and the sidebar slides over the page. */
 const NARROW = '(max-width: 860px)'
@@ -266,6 +281,22 @@ export default function App() {
     ...[resultA, ...(resultB ? [resultB] : [])].flatMap((r) => (r.error ? [] : r.appliances.map((a) => Number(a.kwhPerMonth)))),
   )
 
+  // The appliance picker is a native <dialog>: showModal() gives the focus trap, Esc and the backdrop.
+  const picker = useRef<HTMLDialogElement>(null)
+  const addedId = useRef<number | null>(null)
+  const addPreset = (preset: Preset) => {
+    const row = newRow(preset)
+    addedId.current = row.id
+    setRows((all) => [...all, row])
+    picker.current?.close()
+  }
+  // Bring the row just added into view: on a long list it lands below the fold.
+  useEffect(() => {
+    if (addedId.current === null) return
+    document.querySelector(`[data-row-id="${addedId.current}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    addedId.current = null
+  }, [rows])
+
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
   const allCollapsed = rows.length > 0 && rows.every((r) => r.collapsed)
@@ -471,7 +502,7 @@ export default function App() {
             <ul className="rows">
               {rows.map((row, index) =>
                 row.collapsed ? (
-                  <li key={row.id} className="row row-collapsed">
+                  <li key={row.id} className="row row-collapsed" data-row-id={row.id}>
                     <button
                       className="row-summary"
                       aria-expanded="false"
@@ -491,7 +522,7 @@ export default function App() {
                     </button>
                   </li>
                 ) : (
-                <li key={row.id} className="row">
+                <li key={row.id} className="row" data-row-id={row.id}>
                   <div className="row-top">
                     <button
                       className="icon-btn chevron-btn"
@@ -551,16 +582,46 @@ export default function App() {
               )}
             </ul>
 
-            <div className="add">
-              <h3>เพิ่มเครื่องใช้ไฟฟ้า</h3>
-              <div className="chips">
-                {PRESETS.map((p) => (
-                  <button key={p.name} className="chip" onClick={() => setRows((all) => [...all, newRow(p)])}>
-                    <span aria-hidden="true">{p.icon}</span> {p.name}
+            <button className="add-btn" aria-haspopup="dialog" onClick={() => picker.current?.showModal()}>
+              <span className="add-plus" aria-hidden="true">
+                +
+              </span>
+              เพิ่มเครื่องใช้ไฟฟ้า{compare ? ` ลง${SET_LABEL[shown]}` : ''}
+            </button>
+
+            <dialog
+              className="modal"
+              ref={picker}
+              aria-labelledby="picker-title"
+              // A click that lands on the <dialog> itself, not its content, is a click on the backdrop.
+              onClick={(e) => e.target === e.currentTarget && picker.current?.close()}
+            >
+              <div className="modal-body">
+                <div className="modal-head">
+                  <h2 id="picker-title">
+                    เพิ่มเครื่องใช้ไฟฟ้า
+                    {compare && <span className="muted small"> · ลง{SET_LABEL[shown]}</span>}
+                  </h2>
+                  <button className="icon-btn" onClick={() => picker.current?.close()} aria-label="ปิด">
+                    ✕
                   </button>
-                ))}
+                </div>
+                <ul className="preset-grid">
+                  {PRESETS.map((p) => (
+                    <li key={p.name}>
+                      <button className="preset" onClick={() => addPreset(p)}>
+                        <span className="preset-icon" aria-hidden="true">
+                          {p.icon}
+                        </span>
+                        <span className="preset-name">{p.name}</span>
+                        <span className="preset-spec">{presetSummary(p)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="hint">ค่าที่ใส่ให้เป็นค่าทั่วไป แก้สเปคและชั่วโมงใช้งานได้หลังเพิ่ม</p>
               </div>
-            </div>
+            </dialog>
 
             <div className="settings">
               <div className="utility">
