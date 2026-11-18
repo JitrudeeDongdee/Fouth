@@ -106,12 +106,37 @@ object HomeRates {
     fun tariffCodeFor(utility: Utility, totalKwh: BigDecimal): String =
         if (totalKwh <= SMALL_HOUSEHOLD_LIMIT_KWH) utility.smallHouseholdTariffCode
         else utility.largeHouseholdTariffCode
+
+    /**
+     * The small- and large-household tariffs a utility uses on [on] (by default the
+     * schedule now in force), small first. Ft does not change the tiers, so any value works.
+     */
+    fun tariffsOn(utility: Utility, on: LocalDate = CURRENT_SCHEDULE_FROM): List<TieredTariff> {
+        val book = rateBook(utility, BigDecimal.ZERO)
+        return listOf(utility.smallHouseholdTariffCode, utility.largeHouseholdTariffCode)
+            .map { book.resolve(it, on).tariff as TieredTariff }
+    }
 }
 
 data class HomeBillEstimate(val usage: UsageEstimate, val bill: BillBreakdown)
 
 /** Appliances in, estimated monthly electricity bill out. */
 object HomeBillEstimator {
+    /**
+     * Prices a month's usage given directly in kWh, with no appliances: the same tariff
+     * choice and the same bill rules as [estimate]. Used to explain the progressive rate.
+     */
+    fun priceUsage(
+        totalKwh: BigDecimal,
+        utility: Utility,
+        ftPerKwh: BigDecimal,
+        on: LocalDate = HomeRates.CURRENT_SCHEDULE_FROM,
+    ): BillBreakdown {
+        require(totalKwh.signum() >= 0) { "usage must not be negative" }
+        val code = HomeRates.tariffCodeFor(utility, totalKwh)
+        return BillCalculator.calculate(Usage.Total(totalKwh), HomeRates.rateBook(utility, ftPerKwh).resolve(code, on))
+    }
+
     fun estimate(
         appliances: List<Appliance>,
         utility: Utility,

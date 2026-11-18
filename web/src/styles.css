@@ -1317,3 +1317,157 @@ input {
 .tier-notes strong {
   color: var(--ink);
 }
+
+/* `hidden` must win over the display a class sets (the layout grid, for one). */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Learn page: how the progressive rate works, with every figure from the engine.
+   --------------------------------------------------------------------------- */
+
+.learn {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.learn .hero p {
+  margin-bottom: 0;
+}
+
+.learn-back {
+  justify-self: start;
+  color: var(--bar);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.learn-back:hover {
+  text-decoration: underline;
+}
+
+.learn-section h2 {
+  margin-bottom: 10px;
+}
+
+.learn-section p {
+  margin: 0 0 10px;
+}
+
+.learn-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.learn-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.learn-card {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.learn-card .small {
+  color: var(--muted);
+}
+
+.learn-card.wrong {
+  border-color: var(--error);
+}
+
+.learn-card.wrong .learn-figure {
+  color: var(--error);
+  text-decoration: line-through;
+}
+
+.learn-card.right {
+  border-color: var(--bar);
+  background: var(--accent-soft);
+}
+
+.learn-figure {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.rate-table caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+
+.learn-try {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick:hover,
+.quick.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.learn-result {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-top: 6px;
+}
+
+.learn-bill caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+
+.learn-link {
+  justify-self: start;
+  color: var(--bar);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.learn-link:hover {
+  text-decoration: underline;
+}

@@ -11,7 +11,10 @@ import {
   type Preset,
   type Row,
 } from './appliances'
-import { estimate, smallHouseholdLimitKwh, tariffCodes } from './estimate'
+import { estimate, tariffCodes, type Estimate } from './estimate'
+import { baht } from './format'
+import { LearnPage } from './LearnPage'
+import { TierPanel } from './TierPanel'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
 // Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
@@ -62,36 +65,49 @@ const RESULT_VIEWS: { id: ResultView; title: string }[] = [
  * Back button steps between pages:
  *   ?mode=single | compare   one bill or two
  *   ?view=bill   | tiers     the printed bill or the progressive-rate table
+ *   ?page=learn               the page explaining tiered rates (absent: the calculator)
  * A missing or unknown value reads as "not given": the mode falls back to the one saved
  * in localStorage, the view to the bill.
  */
 interface PageState {
   compare: boolean
   view: ResultView
+  /** The page explaining tiered rates (`?page=learn`); the calculator when false. */
+  learn: boolean
 }
 
 const modeParam = (compare: boolean) => (compare ? 'compare' : 'single')
 
-function pageFromUrl(): { compare: boolean | null; view: ResultView | null } {
+function pageFromUrl(): { compare: boolean | null; view: ResultView | null; learn: boolean } {
   const params = new URLSearchParams(window.location.search)
   const mode = params.get('mode')
   const view = params.get('view')
   return {
     compare: mode === 'compare' ? true : mode === 'single' ? false : null,
     view: view === 'bill' || view === 'tiers' ? view : null,
+    learn: params.get('page') === 'learn',
   }
 }
 
 const urlMatches = (page: PageState) => {
   const params = new URLSearchParams(window.location.search)
-  return params.get('mode') === modeParam(page.compare) && params.get('view') === page.view
+  return (
+    params.get('mode') === modeParam(page.compare) &&
+    params.get('view') === page.view &&
+    params.get('page') === (page.learn ? 'learn' : null)
+  )
 }
 
-/** The current address with `mode` and `view` set, so any other query or hash is kept. */
+/**
+ * The current address with `mode`, `view` and `page` set, so any other query or hash is
+ * kept. The learn page keeps `mode` and `view`, so going back lands where the reader was.
+ */
 function urlFor(page: PageState): string {
   const url = new URL(window.location.href)
   url.searchParams.set('mode', modeParam(page.compare))
   url.searchParams.set('view', page.view)
+  if (page.learn) url.searchParams.set('page', 'learn')
+  else url.searchParams.delete('page')
   return url.pathname + url.search + url.hash
 }
 
@@ -128,7 +144,6 @@ function useNarrow(): boolean {
   return narrow
 }
 
-type Estimate = ReturnType<typeof estimate>
 
 interface Saved {
   /** Set A. Kept under the old name so a list saved before compare mode still loads. */
@@ -157,7 +172,6 @@ function save(state: Saved) {
   }
 }
 
-const baht = (text: string) => Number(text).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function App() {
   const saved = useMemo(() => {
@@ -181,6 +195,7 @@ export default function App() {
   const [editing, setEditing] = useState<SetId>('a')
   // The result area shows either the printed bill or how the progressive rate was applied.
   const [view, setView] = useState<ResultView>(() => pageFromUrl().view ?? 'bill')
+  const [learn, setLearn] = useState(() => pageFromUrl().learn)
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -225,19 +240,20 @@ export default function App() {
   // came from Back/Forward already matches the URL, so it writes nothing.
   const urlSynced = useRef(false)
   useEffect(() => {
-    const page = { compare, view }
+    const page = { compare, view, learn }
     if (!urlMatches(page)) {
       if (urlSynced.current) window.history.pushState(null, '', urlFor(page))
       else window.history.replaceState(null, '', urlFor(page))
     }
     urlSynced.current = true
-  }, [compare, view])
+  }, [compare, view, learn])
 
   // URL → page, when Back/Forward moves between entries.
   useEffect(() => {
     const onPop = () => {
       const fromUrl = pageFromUrl()
       setView(fromUrl.view ?? 'bill')
+      setLearn(fromUrl.learn)
       if (fromUrl.compare === null || fromUrl.compare === compare) return
       if (fromUrl.compare) startCompare()
       else stopCompare()
@@ -295,11 +311,26 @@ export default function App() {
   const chooseMode = (wantCompare: boolean) => {
     if (wantCompare && !compare) startCompare()
     if (!wantCompare && compare) stopCompare()
+    setLearn(false)
     afterNav()
+  }
+
+  /** Opens or leaves the page explaining tiered rates, starting it at the top. */
+  const openLearn = (open: boolean) => {
+    afterNav()
+    setLearn(open)
+    window.scrollTo({ top: 0 })
   }
 
   const goTo = (id: string, wantView?: ResultView) => {
     afterNav()
+    // Every target lives on the calculator; leave the learn page first.
+    if (learn) {
+      setLearn(false)
+      if (wantView) setView(wantView)
+      window.setTimeout(() => goToNow(id), 0)
+      return
+    }
     // The notes live on the slips, so reaching them means showing the bill first.
     const needView = wantView ?? (id === 'how' ? 'bill' : undefined)
     if (needView && needView !== view) {
@@ -428,8 +459,8 @@ export default function App() {
         </button>
         <span className="topbar-brand">Fouth · คำนวณค่าไฟบ้าน</span>
         <span className="topbar-mode">
-          {compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}
-          {view === 'tiers' && ' · ขั้นบันได'}
+          {learn ? 'ความรู้ค่าไฟ' : compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}
+          {!learn && view === 'tiers' && ' · ขั้นบันได'}
         </span>
       </header>
 
@@ -449,7 +480,7 @@ export default function App() {
                 {/* A real link, so it can be copied or opened in a new tab; a plain click stays in the page. */}
                 <a
                   ref={i === 0 ? firstNavItem : undefined}
-                  href={urlFor({ compare: m.compare, view })}
+                  href={urlFor({ compare: m.compare, view, learn: false })}
                   className={compare === m.compare ? 'nav-item on' : 'nav-item'}
                   aria-current={compare === m.compare ? 'page' : undefined}
                   title={m.title}
@@ -477,9 +508,9 @@ export default function App() {
             {RESULT_VIEWS.map((v) => (
               <li key={v.id}>
                 <a
-                  href={urlFor({ compare, view: v.id })}
-                  className={view === v.id ? 'nav-item on' : 'nav-item'}
-                  aria-current={view === v.id ? 'page' : undefined}
+                  href={urlFor({ compare, view: v.id, learn: false })}
+                  className={!learn && view === v.id ? 'nav-item on' : 'nav-item'}
+                  aria-current={!learn && view === v.id ? 'page' : undefined}
                   title={v.title}
                   onClick={(e) => {
                     if (!isPlainClick(e)) return
@@ -497,6 +528,31 @@ export default function App() {
                 </a>
               </li>
             ))}
+          </ul>
+
+          <p className="nav-label">ความรู้</p>
+          <ul className="nav-list">
+            <li>
+              <a
+                href={urlFor({ compare, view, learn: true })}
+                className={learn ? 'nav-item on' : 'nav-item'}
+                aria-current={learn ? 'page' : undefined}
+                title="ค่าไฟขั้นบันไดคิดยังไง"
+                onClick={(e) => {
+                  if (!isPlainClick(e)) return
+                  e.preventDefault()
+                  openLearn(true)
+                }}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  📘
+                </span>
+                <span className="nav-text">
+                  <span className="nav-title">ค่าไฟขั้นบันไดคิดยังไง</span>
+                  <span className="nav-detail">อธิบายทีละขั้น ลองใส่หน่วยเอง</span>
+                </span>
+              </a>
+            </li>
           </ul>
 
           <p className="nav-label">ไปที่</p>
@@ -528,7 +584,21 @@ export default function App() {
       </aside>
 
       <div className="page">
-        <header className="hero">
+        {learn && (
+          <LearnPage
+            utility={utility}
+            utilityShort={chosenUtility.short}
+            ft={ft}
+            smallCode={tariffCodes[utility].small}
+            largeCode={tariffCodes[utility].large}
+            myKwh={resultA.error ? null : resultA.totalKwh}
+            backHref={urlFor({ compare, view, learn: false })}
+            onBack={() => openLearn(false)}
+          />
+        )}
+
+        {/* The calculator stays mounted behind the learn page, so nothing typed is lost. */}
+        <header className="hero" hidden={learn}>
           <h1>คำนวณค่าไฟบ้านโดยประมาณ</h1>
           <p>
             ใส่เครื่องใช้ไฟฟ้าในบ้าน สเปค และชั่วโมงใช้งานต่อวัน ระบบจะคำนวณหน่วยไฟต่อเดือน
@@ -536,7 +606,7 @@ export default function App() {
           </p>
         </header>
 
-        <main className={compare ? 'layout comparing' : 'layout'}>
+        <main className={compare ? 'layout comparing' : 'layout'} hidden={learn}>
           <section className="panel" aria-labelledby="appliances-title">
             <div className="panel-head">
               <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
@@ -758,6 +828,8 @@ export default function App() {
                     utilityShort={chosenUtility.short}
                     smallCode={tariffCodes[utility].small}
                     largeCode={tariffCodes[utility].large}
+                    learnHref={urlFor({ compare, view, learn: true })}
+                    onLearn={() => openLearn(true)}
                   />
                 ))}
               </div>
@@ -916,135 +988,6 @@ function Slip(props: {
         <div className="barcode" />
         <span>* ประมาณการ ไม่ใช่บิลจริง *</span>
       </div>
-    </div>
-  )
-}
-
-/** kWh per month up to which the estimate uses the small-household rate (the engine's limit). */
-const SMALL_HOUSEHOLD_LIMIT = Number(smallHouseholdLimitKwh())
-
-const price = (text: string) => Number(text).toFixed(4)
-
-/**
- * How the progressive rate priced one bill: every tier of the tariff as a step, the part
- * of each step the usage filled, and the sum each step contributes. Steps the usage does
- * not reach are shown greyed, so it is clear what the next unit would cost.
- */
-function TierPanel(props: {
-  result: Estimate
-  setLabel: string | null
-  utilityShort: string
-  smallCode: string
-  largeCode: string
-}) {
-  const { result } = props
-  if (result.error) {
-    return (
-      <div className="tier-panel panel">
-        {props.setLabel && <span className="set-stamp plain">{props.setLabel}</span>}
-        <p className="error">ข้อมูลไม่ถูกต้อง: {result.error}</p>
-      </div>
-    )
-  }
-
-  const tiers = result.tiers
-  const total = Number(result.totalKwh)
-  const prices = tiers.map((t) => Number(t.pricePerKwh))
-  const low = Math.min(...prices)
-  const high = Math.max(...prices)
-  // The step the last unit landed in; nothing used means the first.
-  const current = tiers.reduce((last, t, i) => (Number(t.kwh) > 0 ? i : last), 0)
-  const next = tiers[current + 1]
-  const toNext = next ? Number(tiers[current].toKwh) - total : null
-  const small = result.tariffCode === props.smallCode
-  const fill = (t: (typeof tiers)[number]) =>
-    t.toKwh === '' ? (Number(t.kwh) > 0 ? 1 : 0) : Number(t.kwh) / (Number(t.toKwh) - Number(t.fromKwh))
-  const range = (t: (typeof tiers)[number]) => (t.toKwh === '' ? `${t.fromKwh} ขึ้นไป` : `${t.fromKwh}–${t.toKwh}`)
-
-  return (
-    <div className="tier-panel panel">
-      <div className="tier-head">
-        {props.setLabel && <span className="set-stamp plain">{props.setLabel}</span>}
-        <span>
-          <strong>{baht(result.totalKwh)} หน่วย</strong> · {props.utilityShort} อัตรา {result.tariffCode}
-        </span>
-      </div>
-
-      <p className="tier-why">
-        {small
-          ? `ใช้ไม่เกิน ${SMALL_HOUSEHOLD_LIMIT} หน่วย จึงคิดอัตรา ${props.smallCode} (บ้านใช้ไฟน้อย ขั้นแรกแบ่งละเอียดกว่า)`
-          : `ใช้เกิน ${SMALL_HOUSEHOLD_LIMIT} หน่วย จึงคิดอัตรา ${props.largeCode} (ขั้นแรกกว้างกว่า ค่าบริการสูงกว่า)`}
-      </p>
-
-      <div className="stairs" style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }} aria-hidden="true">
-        {tiers.map((t, i) => {
-          const rise = high === low ? 1 : (Number(t.pricePerKwh) - low) / (high - low)
-          return (
-            <div className={i === current ? 'step now' : 'step'} key={t.fromKwh}>
-              <span className="step-price">฿{price(t.pricePerKwh)}</span>
-              <div className="step-block" style={{ height: `${35 + rise * 65}%` }}>
-                <div className="step-fill" style={{ width: `${Math.min(1, fill(t)) * 100}%` }} />
-              </div>
-              <span className="step-range">{range(t)}</span>
-            </div>
-          )
-        })}
-      </div>
-
-      <table className="tier-table">
-        <thead>
-          <tr>
-            <th>ขั้น</th>
-            <th>หน่วยที่</th>
-            <th>คิดเป็น</th>
-            <th className="num">บาท</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tiers.map((t, i) => {
-            const used = Number(t.kwh) > 0
-            return (
-              <tr key={t.fromKwh} className={used ? (i === current ? 'now' : '') : 'unused'}>
-                <td>{i + 1}</td>
-                <td>{range(t)}</td>
-                <td>
-                  {used ? (
-                    <>
-                      {baht(t.kwh)} × {price(t.pricePerKwh)}
-                    </>
-                  ) : (
-                    <span className="small">ยังไม่ถึง · ฿{price(t.pricePerKwh)}/หน่วย</span>
-                  )}
-                </td>
-                <td className="num">{used ? baht(t.amount) : '–'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={3}>ค่าพลังงานไฟฟ้า</td>
-            <td className="num">{baht(result.energyCharge)}</td>
-          </tr>
-        </tfoot>
-      </table>
-
-      <ul className="tier-notes">
-        {next && toNext !== null && (
-          <li>
-            อีก <strong>{baht(toNext.toFixed(2))} หน่วย</strong> จะขึ้นขั้นที่ {current + 2} ซึ่งคิดหน่วยละ ฿
-            {price(next.pricePerKwh)}
-          </li>
-        )}
-        {small && (
-          <li>
-            ถ้าใช้เกิน {SMALL_HOUSEHOLD_LIMIT} หน่วย (อีก {baht(Math.max(0, SMALL_HOUSEHOLD_LIMIT - total).toFixed(2))} หน่วย)
-            จะเปลี่ยนไปคิดอัตรา {props.largeCode} ทั้งเดือน
-          </li>
-        )}
-        <li>แต่ละขั้นคิดเฉพาะหน่วยที่อยู่ในช่วงนั้น หน่วยแรก ๆ ยังคิดราคาขั้นต้นเสมอ ไม่ได้คิดราคาขั้นสูงทั้งหมด</li>
-        <li>ยอดแต่ละขั้นปัดเป็นสตางค์เพื่อแสดงผล บิลปัดเศษครั้งเดียวที่ยอดรวมค่าพลังงาน</li>
-      </ul>
     </div>
   )
 }

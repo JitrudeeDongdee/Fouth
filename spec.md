@@ -60,6 +60,12 @@ on top without changing the pricing rules.
   reached) and `amount`. `amount` is rounded per tier for display only; the bill rounds
   the energy total once. Built from `BillCalculator.tierUses`, so it always agrees with
   `energyLines`. `smallHouseholdLimitKwh()` (150) is also read by the page, not repeated.
+- `estimateFromUsage(kWh, utility, ft)` → `EstimateResult` for a usage typed in as kWh
+  (no appliances; `appliances` empty), on the same rules as `estimateBill`. Common code:
+  `HomeBillEstimator.priceUsage`.
+- `tariffSchedules(utility)` → `TariffSchedule(code, serviceCharge, tiers)` for the small-
+  then large-household tariff in force now, every tier listed. Common code:
+  `HomeRates.tariffsOn(utility, on)`. The learn page prints its rate tables from this.
 
 ### Compare mode (A/B), web only
 
@@ -97,6 +103,26 @@ so any difference between the two bills comes only from the appliances:
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
+
+### Learn page: how the progressive rate works (web only)
+
+- `?page=learn` opens a full-width explainer in place of the calculator. The calculator
+  stays mounted behind it (`hidden`), so nothing typed is lost. `mode` and `view` stay in
+  the URL, so "← กลับไปหน้าคำนวณ" (or Back) lands where the reader was.
+- Ways in: the sidebar's "ความรู้ → ค่าไฟขั้นบันไดคิดยังไง" (a real link), and a link at the
+  foot of each panel in the ขั้นบันได tab. The mode and page links in the sidebar leave
+  the learn page.
+- Sections, every figure from the engine:
+  1. The idea, in four steps.
+  2. The common misreading at 300 units: every unit at the last tier's price vs the
+     correct sum.
+  3. Which tariff applies (≤ 150 vs > 150), with both rate tables from
+     `tariffSchedules`.
+  4. "ลองคำนวณเอง": a kWh box with quick picks (the calculator's own usage, 50, 150, 151,
+     300, 500), the same `TierPanel` as the tab, and the bill from energy charge to total.
+  5. The 150 → 151 jump.
+  6. The rest of the bill: service charge, Ft, VAT.
+- The try box uses the calculator's utility and Ft.
 
 ### Tiers tab: the progressive rate step by step (web only)
 
@@ -289,6 +315,11 @@ divergence fails loudly instead of passing silently.
   every page; `?view=tiers` opens the table directly; "วิธีคำนวณ" from the table
   switches to the bill and opens the notes; `view=nope&x=1#a` falls back to the bill
   and keeps `x=1#a`.
+  Learn page: engine `allTests` 41 passed on JVM and Node.js (3 new); 15 web tests.
+  Checked in the browser at 1280 px: 300 units reads ฿1,247.52 (wrong) vs ฿1,015.84
+  (right); both rate tables are correct; 150 → 151 units goes ฿505.74 → ฿537.28 (+31.54);
+  "บ้านของฉัน" 48.66 units gives ฿162.83, matching the bill; Back returns to the
+  calculator. At 375 px there is no overflow.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

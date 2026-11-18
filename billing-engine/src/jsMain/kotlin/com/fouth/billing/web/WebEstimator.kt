@@ -2,6 +2,7 @@
 
 package com.fouth.billing.web
 
+import com.fouth.billing.engine.BillBreakdown
 import com.fouth.billing.engine.BillCalculator
 import com.fouth.billing.engine.Money
 import com.fouth.billing.engine.TieredTariff
@@ -13,6 +14,7 @@ import com.fouth.billing.estimate.HomeRates
 import com.fouth.billing.estimate.LabelledAppliance
 import com.fouth.billing.estimate.RatedAppliance
 import com.fouth.billing.estimate.Utility
+import com.ionspin.kotlin.bignum.decimal.BigDecimal
 import com.ionspin.kotlin.bignum.decimal.DecimalMode
 import com.ionspin.kotlin.bignum.decimal.RoundingMode
 
@@ -87,38 +89,73 @@ fun estimateBill(
         val bill = result.bill
         // Rough split of the bill by each appliance's share of the kWh, for display only.
         val totalKwh = result.usage.totalKwh
-        EstimateResult(
-            error = "",
-            appliances = result.usage.appliances.map { line ->
+        toResult(
+            bill,
+            result.usage.appliances.map { line ->
                 val share = if (totalKwh.signum() == 0) totalKwh else (line.kwhPerMonth * bill.total).divide(totalKwh, SHARE_DIVISION)
                 ApplianceLine(line.appliance.name, Money.format(line.kwhPerMonth), Money.format(share))
             }.toTypedArray(),
-            totalKwh = Money.format(totalKwh),
-            tariffCode = bill.rates.tariff.code,
-            energyLines = bill.energyLines.map {
-                BillLine(it.label, it.kwh.toStringExpanded(), it.pricePerKwh.toStringExpanded(), Money.format(it.amount))
-            }.toTypedArray(),
-            tiers = (bill.rates.tariff as? TieredTariff)?.let { tariff ->
-                BillCalculator.tierUses(tariff, bill.totalKwh).map {
-                    TierLine(
-                        fromKwh = it.fromKwh.toStringExpanded(),
-                        toKwh = it.toKwh?.toStringExpanded() ?: "",
-                        pricePerKwh = it.pricePerKwh.toStringExpanded(),
-                        kwh = it.kwh.toStringExpanded(),
-                        amount = Money.format(it.amount),
-                    )
-                }.toTypedArray()
-            } ?: emptyArray(),
-            energyCharge = Money.format(bill.energyCharge),
-            serviceCharge = Money.format(bill.serviceCharge),
-            ftCharge = Money.format(bill.ftCharge),
-            subtotal = Money.format(bill.subtotal),
-            vat = Money.format(bill.vat),
-            total = Money.format(bill.total),
         )
     } catch (e: Exception) {
-        EstimateResult(e.message ?: "invalid input", emptyArray(), "", "", emptyArray(), emptyArray(), "", "", "", "", "", "")
+        failed(e)
     }
+
+/**
+ * Prices a month's usage typed in as kWh, with no appliances, on the same rules as
+ * [estimateBill]. For the page that explains the progressive rate. `appliances` is empty.
+ */
+@JsExport
+fun estimateFromUsage(totalKwh: String, utility: String, ftPerKwh: String): EstimateResult =
+    try {
+        toResult(HomeBillEstimator.priceUsage(number("usage", totalKwh), Utility.of(utility), decimal(ftPerKwh)), emptyArray())
+    } catch (e: Exception) {
+        failed(e)
+    }
+
+/** One residential tariff in force now: its code, monthly service charge and every tier. */
+@JsExport
+class TariffSchedule(val code: String, val serviceCharge: String, val tiers: Array<TierLine>)
+
+/**
+ * The small- then large-household tariffs [utility] uses now, so the page can print the
+ * rate tables without repeating a single rate. Each tier's `kwh` and `amount` are zero.
+ */
+@JsExport
+fun tariffSchedules(utility: String): Array<TariffSchedule> =
+    HomeRates.tariffsOn(Utility.of(utility)).map { tariff ->
+        TariffSchedule(tariff.code, Money.format(tariff.serviceCharge), tierLines(tariff, BigDecimal.ZERO))
+    }.toTypedArray()
+
+private fun toResult(bill: BillBreakdown, appliances: Array<ApplianceLine>) = EstimateResult(
+    error = "",
+    appliances = appliances,
+    totalKwh = Money.format(bill.totalKwh),
+    tariffCode = bill.rates.tariff.code,
+    energyLines = bill.energyLines.map {
+        BillLine(it.label, it.kwh.toStringExpanded(), it.pricePerKwh.toStringExpanded(), Money.format(it.amount))
+    }.toTypedArray(),
+    tiers = (bill.rates.tariff as? TieredTariff)?.let { tierLines(it, bill.totalKwh) } ?: emptyArray(),
+    energyCharge = Money.format(bill.energyCharge),
+    serviceCharge = Money.format(bill.serviceCharge),
+    ftCharge = Money.format(bill.ftCharge),
+    subtotal = Money.format(bill.subtotal),
+    vat = Money.format(bill.vat),
+    total = Money.format(bill.total),
+)
+
+private fun tierLines(tariff: TieredTariff, totalKwh: BigDecimal): Array<TierLine> =
+    BillCalculator.tierUses(tariff, totalKwh).map {
+        TierLine(
+            fromKwh = it.fromKwh.toStringExpanded(),
+            toKwh = it.toKwh?.toStringExpanded() ?: "",
+            pricePerKwh = it.pricePerKwh.toStringExpanded(),
+            kwh = it.kwh.toStringExpanded(),
+            amount = Money.format(it.amount),
+        )
+    }.toTypedArray()
+
+private fun failed(e: Exception) =
+    EstimateResult(e.message ?: "invalid input", emptyArray(), "", "", emptyArray(), emptyArray(), "", "", "", "", "", "")
 
 /** kWh per month at which the estimate switches from the small- to the large-household tariff. */
 @JsExport
