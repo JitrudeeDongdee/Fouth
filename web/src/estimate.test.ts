@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { newRow, PRESETS } from './appliances'
-import { estimate, tariffCodes } from './estimate'
+import { estimate, estimateKwh, tariffCodes, tariffSchedules } from './estimate'
 
 // Checks the page talks to the compiled Kotlin engine correctly. The pricing rules
 // themselves are tested in billing-engine (commonTest, on JVM and JS).
@@ -20,6 +20,44 @@ describe('estimate', () => {
     expect(result.energyCharge).toBe('654.06')
     expect(result.total).toBe('816.71')
     expect(result.appliances.map((a) => a.kwhPerMonth)).toEqual(['168.00', '30.00', '15.00'])
+  })
+
+  it('lists every tier of the tariff, including those the usage does not reach', () => {
+    const result = estimate(typicalHome(), 'PEA', '0.3972', 30)
+
+    // 213 kWh on 1.1.2: 200 @ 3.0000 = 600.00, 13 @ 4.1584 = 54.0592, none in 400+.
+    expect(result.tiers.map((t) => [t.fromKwh, t.toKwh, t.pricePerKwh, t.kwh, t.amount])).toEqual([
+      ['0', '200', '3', '200', '600.00'],
+      ['200', '400', '4.1584', '13', '54.06'],
+      ['400', '', '4.3583', '0', '0.00'],
+    ])
+  })
+
+  it('prices usage typed in as kWh the same way as appliances that add up to it', () => {
+    const viaAppliances = estimate(typicalHome(), 'PEA', '0.3972', 30)
+    const viaKwh = estimateKwh('213', 'PEA', '0.3972')
+
+    expect(viaKwh.error).toBe('')
+    expect(viaKwh.appliances).toEqual([])
+    expect(viaKwh.tariffCode).toBe(viaAppliances.tariffCode)
+    expect(viaKwh.total).toBe(viaAppliances.total)
+    expect(estimateKwh('-1', 'PEA', '0').error).not.toBe('')
+    expect(estimateKwh('abc', 'PEA', '0').error).not.toBe('')
+  })
+
+  it('hands the page both rate tables in force, small household first', () => {
+    const [small, large] = tariffSchedules('PEA')
+
+    expect(small.code).toBe('1.1.1')
+    expect(small.serviceCharge).toBe('8.19')
+    expect(small.tiers.map((t) => t.toKwh)).toEqual(['15', '25', '200', '400', ''])
+    expect(large.code).toBe('1.1.2')
+    expect(large.tiers.map((t) => [t.fromKwh, t.pricePerKwh])).toEqual([
+      ['0', '3'],
+      ['200', '4.1584'],
+      ['400', '4.3583'],
+    ])
+    expect(tariffSchedules('MEA').map((s) => s.code)).toEqual(['1.1', '1.2'])
   })
 
   it('charges the same under MEA but names the tariff the way MEA does', () => {

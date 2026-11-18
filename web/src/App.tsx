@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { copyRows, defaultRows, KIND_LABEL, newRow, PRESETS, resumeIds, specSummary, type Kind, type Row } from './appliances'
-import { estimate, tariffCodes } from './estimate'
+import {
+  copyRows,
+  defaultRows,
+  KIND_LABEL,
+  newRow,
+  resumeIds,
+  specSummary,
+  splitByQuantity,
+  type Kind,
+  type Preset,
+  type Row,
+} from './appliances'
+import { estimate, tariffCodes, type Estimate } from './estimate'
+import { baht } from './format'
+import { AppliancePicker } from './AppliancePicker'
+import { iconOf } from './catalog'
+import { Icon } from './Icon'
+import { LearnPage } from './LearnPage'
+import { currentTier, Stairs, tierRange } from './TierPanel'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
 // Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
@@ -39,24 +56,72 @@ const BILL_MODES = [
 ] as const
 
 /**
- * The bill mode lives in the URL (`?mode=single` / `?mode=compare`), so a link opens the
- * same mode and the browser's Back button steps between modes. Anything else reads as
- * "not given", and the mode saved in localStorage applies.
+ * Which page is open lives in the URL, so a link opens the same page and the browser's
+ * Back button steps between pages:
+ *   ?mode=single | compare   one bill or two
+ *   ?page=learn               the page explaining tiered rates (absent: the calculator)
+ * A missing or unknown mode reads as "not given" and falls back to the one saved in
+ * localStorage. A `view` parameter from older links is dropped.
  */
-type ModeParam = 'single' | 'compare'
-
-const modeParam = (compare: boolean): ModeParam => (compare ? 'compare' : 'single')
-
-function modeFromUrl(): boolean | null {
-  const value = new URLSearchParams(window.location.search).get('mode')
-  return value === 'compare' ? true : value === 'single' ? false : null
+interface PageState {
+  compare: boolean
+  /** The page explaining tiered rates (`?page=learn`); the calculator when false. */
+  learn: boolean
 }
 
-/** The current address with only `mode` changed, so any other query or hash is kept. */
-function urlWithMode(compare: boolean): string {
+const modeParam = (compare: boolean) => (compare ? 'compare' : 'single')
+
+function pageFromUrl(): { compare: boolean | null; learn: boolean } {
+  const params = new URLSearchParams(window.location.search)
+  const mode = params.get('mode')
+  return {
+    compare: mode === 'compare' ? true : mode === 'single' ? false : null,
+    learn: params.get('page') === 'learn',
+  }
+}
+
+const urlMatches = (page: PageState) => {
+  const params = new URLSearchParams(window.location.search)
+  return (
+    params.get('mode') === modeParam(page.compare) &&
+    params.get('page') === (page.learn ? 'learn' : null) &&
+    !params.has('view')
+  )
+}
+
+/**
+ * The current address with `mode` and `page` set, so any other query or hash is kept.
+ * The learn page keeps `mode`, so going back lands on the mode the reader was in.
+ */
+function urlFor(page: PageState): string {
   const url = new URL(window.location.href)
-  url.searchParams.set('mode', modeParam(compare))
+  url.searchParams.set('mode', modeParam(page.compare))
+  url.searchParams.delete('view')
+  if (page.learn) url.searchParams.set('page', 'learn')
+  else url.searchParams.delete('page')
   return url.pathname + url.search + url.hash
+}
+
+/** A plain left click on an in-page link is handled by the page; anything else is the browser's. */
+const isPlainClick = (e: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }) =>
+  e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+
+/** What the slip's usage section draws. A per-viewer display preference, not bill data. */
+type UsageView = 'appliances' | 'tiers'
+
+const USAGE_VIEWS: { id: UsageView; title: string }[] = [
+  { id: 'appliances', title: 'ตามเครื่อง' },
+  { id: 'tiers', title: 'ขั้นบันได' },
+]
+
+const USAGE_VIEW_KEY = 'fouth-slip-usage-view'
+
+function loadUsageView(): UsageView {
+  try {
+    return localStorage.getItem(USAGE_VIEW_KEY) === 'tiers' ? 'tiers' : 'appliances'
+  } catch {
+    return 'appliances'
+  }
 }
 
 /** Below this width the layout is one column and the sidebar slides over the page. */
@@ -84,7 +149,6 @@ function useNarrow(): boolean {
   return narrow
 }
 
-type Estimate = ReturnType<typeof estimate>
 
 interface Saved {
   /** Set A. Kept under the old name so a list saved before compare mode still loads. */
@@ -113,19 +177,20 @@ function save(state: Saved) {
   }
 }
 
-const baht = (text: string) => Number(text).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function App() {
   const saved = useMemo(() => {
     const state = load()
-    // Resume id numbering above both sets before any new row is made.
-    if (state) resumeIds(state.rows ?? [], state.rowsB ?? [])
-    return state
+    if (!state) return null
+    // Resume id numbering above both sets before any new row is made, then turn any card
+    // saved with a quantity into that many one-appliance cards.
+    resumeIds(state.rows ?? [], state.rowsB ?? [])
+    return { ...state, rows: splitByQuantity(state.rows ?? []), rowsB: state.rowsB && splitByQuantity(state.rowsB) }
   }, [])
   const initial = useMemo(() => {
     const a = saved?.rows ?? defaultRows()
     // A link's ?mode= wins over the mode this browser last used.
-    const compare = modeFromUrl() ?? saved?.compare ?? false
+    const compare = pageFromUrl().compare ?? saved?.compare ?? false
     const savedB = saved?.rowsB ?? []
     // Opening ?mode=compare with no set B yet starts B from a copy of A, as the menu does.
     const b = compare && savedB.length === 0 ? copyRows(a) : savedB
@@ -135,6 +200,17 @@ export default function App() {
   const [rowsB, setRowsB] = useState<Row[]>(initial.b)
   const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
+  // The result area shows either the printed bill or how the progressive rate was applied.
+  const [learn, setLearn] = useState(() => pageFromUrl().learn)
+  // One choice for every slip, so two slips in compare mode always draw the same thing.
+  const [usageView, setUsageView] = useState<UsageView>(loadUsageView)
+  useEffect(() => {
+    try {
+      localStorage.setItem(USAGE_VIEW_KEY, usageView)
+    } catch {
+      // Storage can be unavailable; the slips then start with the appliance bars.
+    }
+  }, [usageView])
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -174,26 +250,26 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
-  // Mode → URL. The first write replaces the entry (the page's own address gains ?mode=),
-  // later ones add an entry so Back returns to the previous mode. A change that came from
-  // Back/Forward already matches the URL, so it writes nothing.
+  // Page → URL. The first write replaces the entry (the page's own address gains ?mode=),
+  // later ones add an entry so Back returns to the previous page. A change that
+  // came from Back/Forward already matches the URL, so it writes nothing.
   const urlSynced = useRef(false)
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('mode') === modeParam(compare)) {
-      urlSynced.current = true
-      return
+    const page = { compare, learn }
+    if (!urlMatches(page)) {
+      if (urlSynced.current) window.history.pushState(null, '', urlFor(page))
+      else window.history.replaceState(null, '', urlFor(page))
     }
-    if (urlSynced.current) window.history.pushState(null, '', urlWithMode(compare))
-    else window.history.replaceState(null, '', urlWithMode(compare))
     urlSynced.current = true
-  }, [compare])
+  }, [compare, learn])
 
-  // URL → mode, when Back/Forward moves between entries.
+  // URL → page, when Back/Forward moves between entries.
   useEffect(() => {
     const onPop = () => {
-      const fromUrl = modeFromUrl()
-      if (fromUrl === null || fromUrl === compare) return
-      if (fromUrl) startCompare()
+      const fromUrl = pageFromUrl()
+      setLearn(fromUrl.learn)
+      if (fromUrl.compare === null || fromUrl.compare === compare) return
+      if (fromUrl.compare) startCompare()
       else stopCompare()
     }
     window.addEventListener('popstate', onPop)
@@ -249,11 +325,29 @@ export default function App() {
   const chooseMode = (wantCompare: boolean) => {
     if (wantCompare && !compare) startCompare()
     if (!wantCompare && compare) stopCompare()
+    setLearn(false)
     afterNav()
+  }
+
+  /** Opens or leaves the page explaining tiered rates, starting it at the top. */
+  const openLearn = (open: boolean) => {
+    afterNav()
+    setLearn(open)
+    window.scrollTo({ top: 0 })
   }
 
   const goTo = (id: string) => {
     afterNav()
+    // Every target lives on the calculator; leave the learn page first and let it render.
+    if (learn) {
+      setLearn(false)
+      window.setTimeout(() => goToNow(id), 0)
+      return
+    }
+    goToNow(id)
+  }
+
+  const goToNow = (id: string) => {
     const target = document.getElementById(id)
     if (target instanceof HTMLDetailsElement) target.open = true
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -265,6 +359,22 @@ export default function App() {
     1,
     ...[resultA, ...(resultB ? [resultB] : [])].flatMap((r) => (r.error ? [] : r.appliances.map((a) => Number(a.kwhPerMonth)))),
   )
+
+  // The appliance picker is a native <dialog>: showModal() gives the focus trap, Esc and the backdrop.
+  const picker = useRef<HTMLDialogElement>(null)
+  const addedId = useRef<number | null>(null)
+  const addPreset = (preset: Preset) => {
+    const row = newRow(preset)
+    addedId.current = row.id
+    setRows((all) => [...all, row])
+    picker.current?.close()
+  }
+  // Bring the row just added into view: on a long list it lands below the fold.
+  useEffect(() => {
+    if (addedId.current === null) return
+    document.querySelector(`[data-row-id="${addedId.current}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    addedId.current = null
+  }, [rows])
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
@@ -353,7 +463,9 @@ export default function App() {
           <span aria-hidden="true">☰</span>
         </button>
         <span className="topbar-brand">Fouth · คำนวณค่าไฟบ้าน</span>
-        <span className="topbar-mode">{compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}</span>
+        <span className="topbar-mode">
+          {learn ? 'ความรู้ค่าไฟ' : compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}
+        </span>
       </header>
 
       {narrow && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />}
@@ -372,12 +484,12 @@ export default function App() {
                 {/* A real link, so it can be copied or opened in a new tab; a plain click stays in the page. */}
                 <a
                   ref={i === 0 ? firstNavItem : undefined}
-                  href={urlWithMode(m.compare)}
+                  href={urlFor({ compare: m.compare, learn: false })}
                   className={compare === m.compare ? 'nav-item on' : 'nav-item'}
                   aria-current={compare === m.compare ? 'page' : undefined}
                   title={m.title}
                   onClick={(e) => {
-                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                    if (!isPlainClick(e)) return
                     e.preventDefault()
                     chooseMode(m.compare)
                   }}
@@ -395,17 +507,42 @@ export default function App() {
             ))}
           </ul>
 
+          <p className="nav-label">ความรู้</p>
+          <ul className="nav-list">
+            <li>
+              <a
+                href={urlFor({ compare, learn: true })}
+                className={learn ? 'nav-item on' : 'nav-item'}
+                aria-current={learn ? 'page' : undefined}
+                title="ค่าไฟขั้นบันไดคิดยังไง"
+                onClick={(e) => {
+                  if (!isPlainClick(e)) return
+                  e.preventDefault()
+                  openLearn(true)
+                }}
+              >
+                <span className="nav-icon">
+                  <Icon name="book" size={22} />
+                </span>
+                <span className="nav-text">
+                  <span className="nav-title">ค่าไฟขั้นบันไดคิดยังไง</span>
+                  <span className="nav-detail">อธิบายทีละขั้น ลองใส่หน่วยเอง</span>
+                </span>
+              </a>
+            </li>
+          </ul>
+
           <p className="nav-label">ไปที่</p>
           <ul className="nav-list">
             {[
-              { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
-              { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
-              { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
+              { id: 'appliances-title', icon: 'list' as const, title: 'เครื่องใช้ไฟฟ้า' },
+              { id: 'result', icon: 'receipt' as const, title: 'ผลคำนวณ' },
+              { id: 'how', icon: 'info' as const, title: 'วิธีคำนวณ' },
             ].map((link) => (
               <li key={link.id}>
                 <button className="nav-item" title={link.title} onClick={() => goTo(link.id)}>
-                  <span className="nav-icon" aria-hidden="true">
-                    {link.icon}
+                  <span className="nav-icon">
+                    <Icon name={link.icon} size={22} />
                   </span>
                   <span className="nav-text">
                     <span className="nav-title">{link.title}</span>
@@ -425,7 +562,21 @@ export default function App() {
       </aside>
 
       <div className="page">
-        <header className="hero">
+        {learn && (
+          <LearnPage
+            utility={utility}
+            utilityShort={chosenUtility.short}
+            ft={ft}
+            smallCode={tariffCodes[utility].small}
+            largeCode={tariffCodes[utility].large}
+            myKwh={resultA.error ? null : resultA.totalKwh}
+            backHref={urlFor({ compare, learn: false })}
+            onBack={() => openLearn(false)}
+          />
+        )}
+
+        {/* The calculator stays mounted behind the learn page, so nothing typed is lost. */}
+        <header className="hero" hidden={learn}>
           <h1>คำนวณค่าไฟบ้านโดยประมาณ</h1>
           <p>
             ใส่เครื่องใช้ไฟฟ้าในบ้าน สเปค และชั่วโมงใช้งานต่อวัน ระบบจะคำนวณหน่วยไฟต่อเดือน
@@ -433,7 +584,7 @@ export default function App() {
           </p>
         </header>
 
-        <main className={compare ? 'layout comparing' : 'layout'}>
+        <main className={compare ? 'layout comparing' : 'layout'} hidden={learn}>
           <section className="panel" aria-labelledby="appliances-title">
             <div className="panel-head">
               <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
@@ -471,7 +622,7 @@ export default function App() {
             <ul className="rows">
               {rows.map((row, index) =>
                 row.collapsed ? (
-                  <li key={row.id} className="row row-collapsed">
+                  <li key={row.id} className="row row-collapsed" data-row-id={row.id}>
                     <button
                       className="row-summary"
                       aria-expanded="false"
@@ -480,6 +631,7 @@ export default function App() {
                       <span className="chevron" aria-hidden="true">
                         ▸
                       </span>
+                      <Icon name={iconOf(row)} size={26} className="row-icon" />
                       <span className="summary-text">
                         <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
                         <span className="muted small">{specSummary(row)}</span>
@@ -491,7 +643,7 @@ export default function App() {
                     </button>
                   </li>
                 ) : (
-                <li key={row.id} className="row">
+                <li key={row.id} className="row" data-row-id={row.id}>
                   <div className="row-top">
                     <button
                       className="icon-btn chevron-btn"
@@ -501,6 +653,7 @@ export default function App() {
                     >
                       ▾
                     </button>
+                    <Icon name={iconOf(row)} size={26} className="row-icon" />
                     <input
                       className="name"
                       aria-label="ชื่อเครื่องใช้ไฟฟ้า"
@@ -544,23 +697,20 @@ export default function App() {
                     {row.kind === 'label' && (
                       <Field label="ตามฉลาก" unit="kWh/ปี" value={row.kwhPerYear} onChange={(v) => update(row.id, { kwhPerYear: v })} />
                     )}
-                    <Field label="จำนวน" unit="เครื่อง" value={row.quantity} onChange={(v) => update(row.id, { quantity: v })} />
                   </div>
                 </li>
                 ),
               )}
             </ul>
 
-            <div className="add">
-              <h3>เพิ่มเครื่องใช้ไฟฟ้า</h3>
-              <div className="chips">
-                {PRESETS.map((p) => (
-                  <button key={p.name} className="chip" onClick={() => setRows((all) => [...all, newRow(p)])}>
-                    <span aria-hidden="true">{p.icon}</span> {p.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <button className="add-btn" aria-haspopup="dialog" onClick={() => picker.current?.showModal()}>
+              <span className="add-plus" aria-hidden="true">
+                +
+              </span>
+              เพิ่มเครื่องใช้ไฟฟ้า{compare ? ` ลง${SET_LABEL[shown]}` : ''}
+            </button>
+
+            <AppliancePicker dialog={picker} target={compare ? `ลง${SET_LABEL[shown]}` : null} onPick={addPreset} />
 
             <div className="settings">
               <div className="utility">
@@ -619,6 +769,10 @@ export default function App() {
                       stamp={stampOf(id)}
                       utilityShort={chosenUtility.short}
                       maxKwh={maxKwh}
+                      usageView={usageView}
+                      onUsageView={setUsageView}
+                      learnHref={urlFor({ compare, learn: true })}
+                      onLearn={() => openLearn(true)}
                     >
                       {notes(id === 'a')}
                     </Slip>
@@ -626,7 +780,6 @@ export default function App() {
                 </div>
               ))}
             </div>
-
           </section>
         </main>
 
@@ -647,9 +800,16 @@ function Slip(props: {
   stamp: string
   utilityShort: string
   maxKwh: number
+  /** What the usage section of the slip draws: kWh per appliance, or the tier staircase. */
+  usageView: UsageView
+  onUsageView: (view: UsageView) => void
+  /** The page explaining tiered rates, linked from the staircase. */
+  learnHref: string
+  onLearn: () => void
   children?: ReactNode
 }) {
   const { result, setLabel } = props
+  const top = result.error ? null : result.tiers[currentTier(result.tiers)]
   return (
     <div className={props.editing ? 'receipt feeding editing' : 'receipt feeding'} data-set={props.set}>
       {setLabel && (
@@ -682,22 +842,59 @@ function Slip(props: {
             </span>
           </div>
 
-          <h3>ใช้ไฟจากอะไรบ้าง</h3>
-          <ul className="bars">
-            {result.appliances.map((a, i) => (
-              <li key={i}>
-                <div className="bar-label">
-                  <span>{a.name}</span>
-                  <span className="muted">
-                    {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
-                  </span>
-                </div>
-                <div className="bar-track">
-                  <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="usage-head">
+            <h3>{props.usageView === 'appliances' ? 'ใช้ไฟจากอะไรบ้าง' : 'ใช้ไฟถึงขั้นไหน'}</h3>
+            <div className="usage-toggle" role="group" aria-label="แสดงการใช้ไฟแบบ">
+              {USAGE_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  className={props.usageView === v.id ? 'on' : ''}
+                  aria-pressed={props.usageView === v.id}
+                  onClick={() => props.onUsageView(v.id)}
+                >
+                  {v.title}
+                </button>
+              ))}
+            </div>
+          </div>
+          {props.usageView === 'appliances' ? (
+            <ul className="bars">
+              {result.appliances.map((a, i) => (
+                <li key={i}>
+                  <div className="bar-label">
+                    <span>{a.name}</span>
+                    <span className="muted">
+                      {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
+                    </span>
+                  </div>
+                  <div className="bar-track">
+                    <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="slip-stairs">
+              <Stairs tiers={result.tiers} />
+              {top && (
+                <p className="small">
+                  หน่วยสุดท้ายอยู่ขั้นที่ {currentTier(result.tiers) + 1} ({tierRange(top)}) หน่วยละ ฿
+                  {Number(top.pricePerKwh).toFixed(4)} · แต่ละขั้นคิดเงินตามรายละเอียดด้านล่าง
+                </p>
+              )}
+              <a
+                className="learn-link"
+                href={props.learnHref}
+                onClick={(e) => {
+                  if (!isPlainClick(e)) return
+                  e.preventDefault()
+                  props.onLearn()
+                }}
+              >
+                ค่าไฟขั้นบันไดคิดยังไง →
+              </a>
+            </div>
+          )}
 
           <h3>รายละเอียดบิล</h3>
           <table className="bill">

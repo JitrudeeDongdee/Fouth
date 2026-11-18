@@ -156,4 +156,41 @@ class EstimatorTest {
         val result = HomeBillEstimator.estimate(emptyList(), Utility.PEA, ftPerKwh = d("0.3972"))
         assertEquals(d("8.76"), result.bill.total)
     }
+
+    @Test
+    fun tariffsOnListsTheSmallThenLargeScheduleInForce() {
+        val (small, large) = HomeRates.tariffsOn(Utility.PEA)
+        assertEquals("1.1.1", small.code)
+        assertEquals("1.1.2", large.code)
+        assertEquals(listOf(d("15"), d("25"), d("200"), d("400"), null), small.tiers.map { it.upToKwh })
+        assertEquals(listOf(d("200"), d("400"), null), large.tiers.map { it.upToKwh })
+        assertEquals(d("8.19"), small.serviceCharge)
+        assertEquals(d("24.62"), large.serviceCharge)
+        assertEquals(listOf("1.1", "1.2"), HomeRates.tariffsOn(Utility.MEA).map { it.code })
+    }
+
+    @Test
+    fun priceUsageMatchesAnApplianceEstimateOfTheSameKwh() {
+        // The 200 kWh heater month from theFirst200UnitsAreCappedAtThreeBaht, priced directly.
+        // Over 150 kWh, so 1.1.2: 200 * 3.0000 = 600.00.
+        val bill = HomeBillEstimator.priceUsage(d("200"), Utility.PEA, ftPerKwh = d("0"))
+        assertEquals("1.1.2", bill.rates.tariff.code)
+        assertEquals(d("600.00"), bill.energyCharge)
+        val heater = RatedAppliance("Heater", watts = d("10000"), hoursPerDay = d("1"))
+        val viaAppliance = HomeBillEstimator.estimate(listOf(heater), Utility.PEA, ftPerKwh = d("0"), daysPerMonth = 20)
+        assertEquals(viaAppliance.bill.total, bill.total)
+    }
+
+    @Test
+    fun oneUnitPast150SwitchesTheWholeMonthToTheLargeTariff() {
+        // 150 kWh on 1.1.1: 15*2.3488 + 10*2.9882 + 125*3.0000 = 440.114 -> 440.11
+        // 151 kWh on 1.1.2: 151*3.0000 = 453.00
+        val at150 = HomeBillEstimator.priceUsage(d("150"), Utility.PEA, ftPerKwh = d("0"))
+        val at151 = HomeBillEstimator.priceUsage(d("151"), Utility.PEA, ftPerKwh = d("0"))
+        assertEquals("1.1.1", at150.rates.tariff.code)
+        assertEquals(d("440.11"), at150.energyCharge)
+        assertEquals("1.1.2", at151.rates.tariff.code)
+        assertEquals(d("453.00"), at151.energyCharge)
+        assertFailsWith<IllegalArgumentException> { HomeBillEstimator.priceUsage(d("-1"), Utility.PEA, d("0")) }
+    }
 }

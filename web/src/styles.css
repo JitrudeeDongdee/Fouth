@@ -385,28 +385,6 @@ input {
   font-size: 0.8rem;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  font: inherit;
-  font-size: 0.88rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: inherit;
-  border-radius: 999px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .hint {
   color: var(--muted);
   font-size: 0.82rem;
@@ -1032,4 +1010,689 @@ input {
   .sidebar.open {
     transition: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Adding an appliance: one "+" button opens a picker of presets in a modal.
+   --------------------------------------------------------------------------- */
+
+.add-btn {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.add-plus {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.modal {
+  width: min(560px, calc(100% - 32px));
+  max-height: min(640px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
+}
+
+.modal[open] {
+  animation: modal-in 0.16s ease-out;
+}
+
+.modal::backdrop {
+  background: rgba(10, 14, 12, 0.5);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.modal-body {
+  padding: 18px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* On a phone the picker rises from the bottom as a sheet. A modal dialog is pinned to
+   both edges, so `top` is let go or an auto height would stretch to the full screen. */
+@media (max-width: 560px) {
+  .modal {
+    top: auto;
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal[open] {
+    animation-name: sheet-up;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal[open] {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Tier panel (learn page): the progressive rate step by step.
+   --------------------------------------------------------------------------- */
+
+.tier-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tier-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.set-stamp.plain {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.tier-why {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* The staircase: one column per tier, taller where a unit costs more. */
+.stairs {
+  display: grid;
+  gap: 4px;
+  height: 150px;
+  align-items: end;
+}
+
+.step {
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px;
+  text-align: center;
+}
+
+.step-price {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-block {
+  align-self: end;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--line);
+}
+
+/* The part of the step the usage filled, from its lower bound to the right. */
+.step-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--bar);
+}
+
+.step.now .step-block {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.step-range {
+  font-size: 0.68rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tier-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tier-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tier-table .num {
+  text-align: right;
+}
+
+.tier-table tr.now td {
+  background: var(--accent-soft);
+}
+
+.tier-table tr.unused td {
+  color: var(--muted);
+}
+
+.tier-table tfoot td {
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.tier-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
+.tier-notes strong {
+  color: var(--ink);
+}
+
+/* `hidden` must win over the display a class sets (the layout grid, for one). */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Learn page: how the progressive rate works, with every figure from the engine.
+   --------------------------------------------------------------------------- */
+
+.learn {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.learn .hero p {
+  margin-bottom: 0;
+}
+
+.learn-back {
+  justify-self: start;
+  color: var(--bar);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.learn-back:hover {
+  text-decoration: underline;
+}
+
+.learn-section h2 {
+  margin-bottom: 10px;
+}
+
+.learn-section p {
+  margin: 0 0 10px;
+}
+
+.learn-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.learn-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.learn-card {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.learn-card .small {
+  color: var(--muted);
+}
+
+.learn-card.wrong {
+  border-color: var(--error);
+}
+
+.learn-card.wrong .learn-figure {
+  color: var(--error);
+  text-decoration: line-through;
+}
+
+.learn-card.right {
+  border-color: var(--bar);
+  background: var(--accent-soft);
+}
+
+.learn-figure {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.rate-table caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+
+.learn-try {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick:hover,
+.quick.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.learn-result {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-top: 6px;
+}
+
+.learn-bill caption {
+  text-align: left;
+  font-weight: 700;
+  padding-bottom: 6px;
+}
+
+.learn-link {
+  justify-self: start;
+  color: var(--bar);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.learn-link:hover {
+  text-decoration: underline;
+}
+
+/* The slip's usage section: a small toggle between the appliance bars and the staircase. */
+.usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 20px 0 8px;
+}
+
+.usage-head h3 {
+  margin: 0;
+}
+
+.usage-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.usage-toggle button {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.usage-toggle button.on {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.slip-stairs {
+  display: grid;
+  gap: 6px;
+}
+
+.slip-stairs .stairs {
+  height: 120px;
+}
+
+.slip-stairs p {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Appliance picker: categories with line icons, then a scrolling list of models.
+   --------------------------------------------------------------------------- */
+
+.icon {
+  display: block;
+  flex: none;
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.nav-item.on .nav-icon {
+  color: var(--ink);
+}
+
+.modal-head h2 {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-back {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.category-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.category {
+  font: inherit;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 16px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.category .icon {
+  color: var(--bar);
+  margin-bottom: 4px;
+}
+
+.category:hover,
+.category:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.category-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.category-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Step 2 scrolls inside the dialog, so the header and back button stay put. */
+.picker-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-right: -6px;
+  padding-right: 6px;
+}
+
+.model-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.model-item {
+  position: relative;
+}
+
+.model {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 56px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model.generic {
+  padding-right: 12px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model.generic .icon {
+  color: var(--bar);
+}
+
+.model:hover,
+.model:focus-visible {
+  border-color: var(--accent);
+}
+
+.model-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.model-name {
+  font-size: 0.92rem;
+}
+
+.model-desc,
+.model-spec {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+/* The source link sits over the card's right edge, outside the pick button. */
+.model-source {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 0.72rem;
+  color: var(--bar);
+}
+
+.brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 0;
+  background: var(--panel);
+}
+
+/* The appliance's line icon on its card, in the same green as the picker. */
+.row-icon {
+  color: var(--bar);
+}
+
+/* Picker search: one box on both steps. */
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.picker-search:focus-within {
+  border-color: var(--accent);
+}
+
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 9px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+}
+
+/* The browser's own clear button would sit next to ours. */
+.picker-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.picker-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.model-icon {
+  color: var(--bar);
+}
+
+.model-cat {
+  color: var(--muted);
 }

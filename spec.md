@@ -54,6 +54,18 @@ on top without changing the pricing rules.
   takes and returns **strings** for every number, so no value becomes a JS float. Errors come
   back in `EstimateResult.error` instead of throwing. `utilities()` hands the page each utility's
   code and its two type codes, so the page never hard-codes them.
+- `EstimateResult.tiers: TierLine[]` — **every** tier of the tariff the bill was priced on,
+  in order, including tiers the usage does not reach. Each `TierLine` has `fromKwh`,
+  `toKwh` (`""` for the open-ended last tier), `pricePerKwh`, `kwh` used (`"0"` if not
+  reached) and `amount`. `amount` is rounded per tier for display only; the bill rounds
+  the energy total once. Built from `BillCalculator.tierUses`, so it always agrees with
+  `energyLines`. `smallHouseholdLimitKwh()` (150) is also read by the page, not repeated.
+- `estimateFromUsage(kWh, utility, ft)` → `EstimateResult` for a usage typed in as kWh
+  (no appliances; `appliances` empty), on the same rules as `estimateBill`. Common code:
+  `HomeBillEstimator.priceUsage`.
+- `tariffSchedules(utility)` → `TariffSchedule(code, serviceCharge, tiers)` for the small-
+  then large-household tariff in force now, every tier listed. Common code:
+  `HomeRates.tariffsOn(utility, on)`. The learn page prints its rate tables from this.
 
 ### Compare mode (A/B), web only
 
@@ -65,7 +77,8 @@ so any difference between the two bills comes only from the appliances:
   every copied row a fresh id, so the two sets never share a row or a React key.
 - The mode is picked in the sidebar (see "App frame" below): บิลเดียว or เปรียบเทียบ 2 บิล.
   The top bar shows the current mode as a chip.
-- The mode is in the URL: `?mode=single` or `?mode=compare`.
+- The mode is in the URL: `?mode=single` or `?mode=compare`. The learn page adds
+  `?page=learn`. A `view` parameter from older links (the removed tiers tab) is dropped.
   - On load, a valid `?mode=` wins over the mode saved in `localStorage`. A missing or
     unknown value falls back to the saved mode, and the URL is corrected with
     `replaceState`, keeping any other query parameters and the hash.
@@ -90,6 +103,133 @@ so any difference between the two bills comes only from the appliances:
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
+
+### Learn page: how the progressive rate works (web only)
+
+- `?page=learn` opens a full-width explainer in place of the calculator. The calculator
+  stays mounted behind it (`hidden`), so nothing typed is lost. `mode` and `view` stay in
+  the URL, so "← กลับไปหน้าคำนวณ" (or Back) lands where the reader was.
+- Ways in: the sidebar's "ความรู้ → ค่าไฟขั้นบันไดคิดยังไง" (a real link), and
+  "ค่าไฟขั้นบันไดคิดยังไง →" under the staircase on a slip. The mode links in the sidebar
+  leave the learn page.
+- Sections, every figure from the engine:
+  1. The idea, in four steps.
+  2. The common misreading at 300 units: every unit at the last tier's price vs the
+     correct sum.
+  3. Which tariff applies (≤ 150 vs > 150), with both rate tables from
+     `tariffSchedules`.
+  4. "ลองคำนวณเอง": a kWh box with quick picks (the calculator's own usage, 50, 150, 151,
+     300, 500), the same `TierPanel` as the tab, and the bill from energy charge to total.
+  5. The 150 → 151 jump.
+  6. The rest of the bill: service charge, Ft, VAT.
+- The try box uses the calculator's utility and Ft.
+
+### Slip usage toggle (web only)
+
+- The usage section of each slip has a small toggle with two choices:
+  - "ตามเครื่อง": the per-appliance kWh bars, titled "ใช้ไฟจากอะไรบ้าง".
+  - "ขั้นบันได": the tier staircase, titled "ใช้ไฟถึงขั้นไหน", with one line naming
+    the tier the last unit landed in and its price. The amounts per tier stay in the
+    bill table below.
+- One choice applies to every slip, so two slips in compare mode always draw the same
+  thing. It is a per-viewer display preference in `localStorage`
+  (`fouth-slip-usage-view`), not bill data and not in the URL. Toggling does not reprint
+  the slip.
+- The staircase is the same `Stairs` component the learn page uses, and has a link to it.
+
+### Tier panel (learn page only)
+
+- `TierPanel` prices one usage tier by tier. It shows why the tariff applies, the
+  `Stairs` chart, a table of "kWh × price = amount" per tier with unreached tiers greyed,
+  the energy charge, and the units left to the next tier and to the 150-unit switch.
+  It is used by the learn page's "ลองคำนวณเอง" box.
+- The calculator used to have a "บิล | ขั้นบันได" tab pair with `?view=bill|tiers`. It was
+  removed once the slip got its own bars/staircase toggle: the slip carries the
+  staircase, and the full explanation lives on the learn page.
+
+### One card = one appliance (web only)
+
+- A card in the appliance list is exactly one appliance; there is no quantity field.
+  Five bulbs are five cards. The page always passes quantity `1` to the engine, which
+  still accepts a quantity (unchanged, so other callers keep working).
+- The หลอดไฟ LED preset is one 10 W bulb (it used to add 5).
+- Lists saved while cards had a quantity are migrated on load by `splitByQuantity`: a
+  card with quantity n becomes n cards with fresh ids, so the saved bill is unchanged.
+  A missing, fractional or broken quantity counts as one. This runs after `resumeIds`,
+  so the copies' ids never collide.
+
+### Adding an appliance (web only)
+
+- One "+ เพิ่มเครื่องใช้ไฟฟ้า" button sits under the list. In compare mode the picker says
+  which set the appliance goes into ("ลงชุด A/B").
+- The picker is `AppliancePicker`, a native `<dialog>` (focus trap, Esc, backdrop click),
+  in two steps:
+  1. **Categories**, a grid with line-art icons (`Icon.tsx`, inline SVG in
+     `currentColor`; no emoji anywhere in the app). Each category shows how many models
+     and brands it has. "อื่น ๆ" adds a blank card straight away.
+  2. **The category's list**, which scrolls inside the dialog:
+     - First, the no-brand default(s), marked "ค่าตั้งต้น". These are the original
+       presets, e.g. แอร์ 12,000 BTU at EER 12.
+     - Then brand chips to narrow the list, and the brand models. Each model shows its
+       description, the spec it adds, and a "ที่มา" link to the manufacturer page
+       (opens in a new tab).
+- A search box sits on both steps (`matchesQuery`, `searchModels` in `catalog.ts`). It
+  matches every word of the query, in any order and case, against category, brand, model
+  code, description and spec figures; Thai digits count as Arabic ones.
+  - On step 1 a search covers every category at once and replaces the grid with the
+    results: matching categories' "ทั่วไป" defaults first, then models tagged with
+    their category and icon.
+  - On step 2 it narrows the list together with the brand chip.
+  - An empty result says so and points back to the generic default.
+- The title follows the choice: the category name, then "<category> · <brand>" once a
+  brand chip is picked (e.g. "พัดลม · Hatari"). The search placeholder follows it too.
+  The generic defaults hide while a brand is picked.
+- Picking adds one card named "<category> <brand> <model>", closes the dialog, and
+  scrolls the card into view. Reopening starts at the categories. Back or closing clears the search and the brand.
+- On a phone the dialog is a bottom sheet with two category columns.
+- Every card in the list shows its category's line icon, both collapsed and expanded.
+  `Row.category` is stored when a card is added from the picker. Cards without it (the
+  starter list, older saved lists) get one from `categoryOf`, in this order: air-con
+  kind → แอร์; a name equal to or starting with a category's name; label kind → ตู้เย็น;
+  anything else → อื่น ๆ (plug icon).
+
+### Appliance catalog (web only)
+
+- `catalog.ts` defines the categories (แอร์, ตู้เย็น, ทีวี, พัดลม, หลอดไฟ, เครื่องทำน้ำอุ่น,
+  หม้อหุงข้าว, เครื่องซักผ้า, คอมพิวเตอร์, อื่น ๆ), each with its generic presets and models.
+- `catalog-data.ts` holds the brand models. Each model's spec comes from the
+  manufacturer's own page (`source`); hours of use and air-con load % stay the
+  category's assumption, which the user edits.
+- Data rules, applied by the merge script when the research was turned into
+  `catalog-data.ts` and partly re-checked by `catalog.test.ts`:
+  - The source is https on the brand's own domain. Carrier's spec PDFs are on
+    shareddocs.com, which Carrier's Thai pages link to.
+  - The figure is positive and plausible. Each model appears once.
+  - Air-con EER = rated capacity ÷ rated input watts, the same basis for every brand.
+    A printed EER is used only when there is no input figure.
+  - A figure that is a maximum, or a washer total that includes its water heater, is
+    left out, because at the category's hours of use it would overstate a month several
+    times over. Apple computers (adapter/maximum power) are left out too, so
+    คอมพิวเตอร์ has only its generic default.
+  - Some figures come from the maker's site outside Thailand for the same model code
+    (Sony TVs from Sony Singapore; Xiaomi fans and bulbs from mi.com outside /th). The
+    card's description says so.
+  - Philips Thailand gives only a barcode as the model, so the product name is shown and
+    the barcode goes in the description.
+- Contents as researched on 2026-11-18, 98 models in all:
+  - แอร์: 37 (Carrier, Daikin, LG, Mitsubishi Electric, Panasonic, Samsung, Sharp)
+  - ตู้เย็น: 13 (LG, Panasonic)
+  - ทีวี: 10 (Sony, Xiaomi)
+  - พัดลม: 12 (Hatari, Mitsubishi Electric, Xiaomi)
+  - หลอดไฟ: 9 (Philips, Lamptan, Xiaomi)
+  - เครื่องทำน้ำอุ่น: 9 (Stiebel Eltron, Mazuma)
+  - หม้อหุงข้าว: 7 (Toshiba, Panasonic)
+  - เครื่องซักผ้า: 1 (Toshiba top-load)
+- Brands left out because their pages give no usable figure: Haier air-con (maximum
+  only); Samsung/Hitachi/Toshiba/Sharp/Mitsubishi/Haier fridges (no kWh/year); LG/TCL/
+  Hisense/Sharp TVs (no power row); Samsung TVs (maximum only); most washers (maximum
+  including heater).
+- Known gaps: no 1-door fridges and no 32" TVs in the set; only one washer.
 
 ### App frame: top bar + sidebar (web only)
 
@@ -161,6 +301,9 @@ Pure Kotlin (common code), no Spring, no database.
   A mismatch is an error, not a silent conversion.
 - `BillCalculator.calculate(usage, rates)` → `BillBreakdown` (energy lines, energy, service,
   Ft, subtotal, VAT, total, plus the `ResolvedRates` it used).
+- `BillCalculator.tierUses(tariff, kWh)` → `TierUse(fromKwh, toKwh?, pricePerKwh, kwh)` for
+  every tier, filling each from the bottom; untouched tiers have kwh 0. The bill's energy
+  lines are exactly the tier uses with kwh > 0 (tested at the tier boundaries).
 - `TouClassifier(holidays)` — classifies a 15-minute interval by its **start** time.
 
 ### Rounding rules (decided)
@@ -226,6 +369,45 @@ divergence fails loudly instead of passing silently.
   a menu click pushes one; Back and Forward switch the mode; opening `?mode=compare`
   over a saved single mode with no set B copies A (fresh ids); `?mode=foo&x=1#how`
   falls back to the saved mode and keeps `x=1` and `#how`.
+  Add-appliance modal checked at 1280 px (centred, 11 presets, picking พัดลม in compare
+  mode added it to set A and closed the modal) and 375 px (bottom sheet, two columns,
+  scrolls). Tiers tab: engine `allTests` 38 passed on JVM and on Node.js (3 new tier
+  tests); 13 web tests; checked in the browser at 1280 px (48.66 kWh on 1.1.1: 35.23 +
+  29.88 + 70.98 = 136.09, matching the bill; tiers 4 and 5 shown unreached; compare
+  shows two panels) and 375 px (panels stacked, no overflow).
+  `?view=` checked in the browser: load adds `view=bill`; the sidebar link and the tab
+  push one entry each; switching mode keeps the view; Back ×3 and Forward step through
+  every page; `?view=tiers` opens the table directly; "วิธีคำนวณ" from the table
+  switches to the bill and opens the notes; `view=nope&x=1#a` falls back to the bill
+  and keeps `x=1#a`.
+  Learn page: engine `allTests` 41 passed on JVM and Node.js (3 new); 15 web tests.
+  Checked in the browser at 1280 px: 300 units reads ฿1,247.52 (wrong) vs ฿1,015.84
+  (right); both rate tables are correct; 150 → 151 units goes ฿505.74 → ฿537.28 (+31.54);
+  "บ้านของฉัน" 48.66 units gives ฿162.83, matching the bill; Back returns to the
+  calculator. At 375 px there is no overflow.
+  Slip usage toggle: checked in the browser. Switching to ขั้นบันได draws 5 steps with
+  "ขั้นที่ 3 (25–200) หน่วยละ ฿3.0000" for 48.66 units, and the choice is stored. In
+  compare mode both slips follow one toggle and nothing reprints.
+  Tiers tab removed: checked in the browser. Opening `?mode=single&view=tiers` shows the
+  bill and the URL becomes `?mode=single`; there are no result tabs; the sidebar has no
+  "หน้า" section and "ไปที่ → ผลคำนวณ" scrolls to the slip; the slip's staircase link opens
+  `?page=learn` and Back returns. 15 web tests pass and the build succeeds.
+  One card = one appliance: 17 web tests (2 new for the migration). In the browser a
+  saved "หลอดไฟ LED × 5" became 5 cards in both sets (ids unique, no `quantity` left) and
+  the total stayed ฿162.83 at 48.66 units. No "จำนวน" field remains.
+  Appliance picker and catalog: 21 web tests (4 for the catalog). Checked in the browser:
+  10 categories with icons and model counts, no emoji left; ตู้เย็น → Panasonic narrows
+  to 6; picking NR-BX421BPST adds "ตู้เย็น Panasonic NR-BX421BPST" at 385.44 kWh/ปี;
+  "ที่มา" opens the maker page in a new tab; reopening starts at the categories. At
+  375 px it is a bottom sheet whose list scrolls, with no overflow.
+  Card icons: 23 web tests (2 new for `categoryOf`). In the browser all 7 cards on the
+  page show an icon, including cards saved before categories existed.
+  Picker search: 25 web tests (2 new). In the browser:
+  - "16 นิ้ว" across categories finds 8 fans; "daikin 12" finds 2 Daikin units; "พัดลม"
+    shows the fan default and 12 fans.
+  - Inside พัดลม, picking Hatari titles it "พัดลม · Hatari" with 6 models, and "18" then
+    leaves P18R1.
+  - Empty results show a message, and back clears the title and the search.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
