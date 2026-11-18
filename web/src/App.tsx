@@ -7,6 +7,7 @@ import {
   PRESETS,
   resumeIds,
   specSummary,
+  splitByQuantity,
   type Kind,
   type Preset,
   type Row,
@@ -182,9 +183,11 @@ function save(state: Saved) {
 export default function App() {
   const saved = useMemo(() => {
     const state = load()
-    // Resume id numbering above both sets before any new row is made.
-    if (state) resumeIds(state.rows ?? [], state.rowsB ?? [])
-    return state
+    if (!state) return null
+    // Resume id numbering above both sets before any new row is made, then turn any card
+    // saved with a quantity into that many one-appliance cards.
+    resumeIds(state.rows ?? [], state.rowsB ?? [])
+    return { ...state, rows: splitByQuantity(state.rows ?? []), rowsB: state.rowsB && splitByQuantity(state.rowsB) }
   }, [])
   const initial = useMemo(() => {
     const a = saved?.rows ?? defaultRows()
@@ -694,7 +697,6 @@ export default function App() {
                     {row.kind === 'label' && (
                       <Field label="ตามฉลาก" unit="kWh/ปี" value={row.kwhPerYear} onChange={(v) => update(row.id, { kwhPerYear: v })} />
                     )}
-                    <Field label="จำนวน" unit="เครื่อง" value={row.quantity} onChange={(v) => update(row.id, { quantity: v })} />
                   </div>
                 </li>
                 ),

@@ -147,6 +147,17 @@ so any difference between the two bills comes only from the appliances:
   removed once the slip got its own bars/staircase toggle: the slip carries the
   staircase, and the full explanation lives on the learn page.
 
+### One card = one appliance (web only)
+
+- A card in the appliance list is exactly one appliance; there is no quantity field.
+  Five bulbs are five cards. The page always passes quantity `1` to the engine, which
+  still accepts a quantity (unchanged, so other callers keep working).
+- The หลอดไฟ LED preset is one 10 W bulb (it used to add 5).
+- Lists saved while cards had a quantity are migrated on load by `splitByQuantity`: a
+  card with quantity n becomes n cards with fresh ids, so the saved bill is unchanged.
+  A missing, fractional or broken quantity counts as one. This runs after `resumeIds`,
+  so the copies' ids never collide.
+
 ### Adding an appliance (web only)
 
 - One "+ เพิ่มเครื่องใช้ไฟฟ้า" button sits under the list, replacing the row of preset
@@ -324,6 +335,9 @@ divergence fails loudly instead of passing silently.
   bill and the URL becomes `?mode=single`; there are no result tabs; the sidebar has no
   "หน้า" section and "ไปที่ → ผลคำนวณ" scrolls to the slip; the slip's staircase link opens
   `?page=learn` and Back returns. 15 web tests pass and the build succeeds.
+  One card = one appliance: 17 web tests (2 new for the migration). In the browser a
+  saved "หลอดไฟ LED × 5" became 5 cards in both sets (ids unique, no `quantity` left) and
+  the total stayed ฿162.83 at 48.66 units. No "จำนวน" field remains.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

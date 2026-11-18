@@ -7,7 +7,6 @@ export interface Row {
   id: number
   kind: Kind
   name: string
-  quantity: string
   watts: string
   hoursPerDay: string
   btu: string
@@ -20,7 +19,7 @@ export interface Row {
 
 export type Preset = Omit<Row, 'id' | 'collapsed'> & { icon: string }
 
-const blank = { quantity: '1', watts: '', hoursPerDay: '', btu: '', eer: '', loadPercent: '', kwhPerYear: '' }
+const blank = { watts: '', hoursPerDay: '', btu: '', eer: '', loadPercent: '', kwhPerYear: '' }
 
 // Typical figures for a Thai home. They are starting points; the user edits them.
 export const PRESETS: Preset[] = [
@@ -29,7 +28,7 @@ export const PRESETS: Preset[] = [
   { ...blank, icon: '🧊', kind: 'label', name: 'ตู้เย็น 2 ประตู', kwhPerYear: '300' },
   { ...blank, icon: '📺', kind: 'rated', name: 'ทีวี', watts: '100', hoursPerDay: '5' },
   { ...blank, icon: '🌀', kind: 'rated', name: 'พัดลม', watts: '50', hoursPerDay: '8' },
-  { ...blank, icon: '💡', kind: 'rated', name: 'หลอดไฟ LED', watts: '10', hoursPerDay: '6', quantity: '5' },
+  { ...blank, icon: '💡', kind: 'rated', name: 'หลอดไฟ LED', watts: '10', hoursPerDay: '6' },
   { ...blank, icon: '🚿', kind: 'rated', name: 'เครื่องทำน้ำอุ่น', watts: '3500', hoursPerDay: '0.5' },
   { ...blank, icon: '🍚', kind: 'rated', name: 'หม้อหุงข้าว', watts: '700', hoursPerDay: '0.5' },
   { ...blank, icon: '👕', kind: 'rated', name: 'เครื่องซักผ้า', watts: '500', hoursPerDay: '1' },
@@ -62,8 +61,21 @@ export function specSummary(row: Row): string {
       : row.kind === 'label'
         ? [`${num(row.kwhPerYear)} kWh/ปี`]
         : [`${num(row.watts)} วัตต์`, `${num(row.hoursPerDay)} ชม./วัน`]
-  if (row.quantity.trim() !== '1') parts.push(`× ${num(row.quantity)} เครื่อง`)
   return parts.join(' · ')
+}
+
+/**
+ * One card is one appliance. Lists saved while cards still had a quantity come back with
+ * each card repeated that many times (fresh ids for the copies), so the bill a viewer
+ * saved does not change when they reload. A missing or non-whole quantity counts as one.
+ * Call after [resumeIds], so the copies' ids are new.
+ */
+export function splitByQuantity(rows: (Row & { quantity?: string })[]): Row[] {
+  return rows.flatMap(({ quantity, ...row }) => {
+    const n = Number(quantity ?? '1')
+    const count = Number.isInteger(n) && n > 1 ? n : 1
+    return [row, ...Array.from({ length: count - 1 }, () => ({ ...row, id: nextId++ }))]
+  })
 }
 
 /** Resumes id numbering above every saved row, so a new or copied row never collides. */

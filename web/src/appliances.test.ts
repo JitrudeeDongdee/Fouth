@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { copyRows, defaultRows, newRow, PRESETS, resumeIds, specSummary } from './appliances'
+import { copyRows, defaultRows, newRow, PRESETS, resumeIds, specSummary, splitByQuantity } from './appliances'
 
 describe('specSummary', () => {
   it('describes each kind of appliance on one line', () => {
@@ -8,12 +8,34 @@ describe('specSummary', () => {
     expect(specSummary(newRow(PRESETS[3]))).toBe('100 วัตต์ · 5 ชม./วัน')
   })
 
-  it('adds the quantity only when there is more than one', () => {
-    expect(specSummary(newRow(PRESETS[5]))).toBe('10 วัตต์ · 6 ชม./วัน · × 5 เครื่อง')
+  it('describes one appliance per card, with no quantity', () => {
+    expect(specSummary(newRow(PRESETS[5]))).toBe('10 วัตต์ · 6 ชม./วัน')
   })
 
   it('shows a dash for an empty field instead of 0', () => {
     expect(specSummary(newRow(PRESETS[10]))).toBe('– วัตต์ · – ชม./วัน')
+  })
+})
+
+describe('lists saved when cards had a quantity', () => {
+  it('repeats a card as many times as its quantity, so the saved bill is unchanged', () => {
+    const saved = [
+      { ...newRow(PRESETS[5]), quantity: '3' },
+      { ...newRow(PRESETS[3]), quantity: '1' },
+      { ...newRow(PRESETS[4]) }, // saved after quantity was dropped
+    ]
+    resumeIds(saved)
+    const rows = splitByQuantity(saved)
+
+    expect(rows.map((r) => r.name)).toEqual(['หลอดไฟ LED', 'หลอดไฟ LED', 'หลอดไฟ LED', 'ทีวี', 'พัดลม'])
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length)
+    expect(rows.every((r) => !('quantity' in r))).toBe(true)
+  })
+
+  it('counts a missing, fractional or broken quantity as one', () => {
+    const saved = ['', '2.5', 'abc', '0'].map((quantity) => ({ ...newRow(PRESETS[3]), quantity }))
+    resumeIds(saved)
+    expect(splitByQuantity(saved)).toHaveLength(4)
   })
 })
 

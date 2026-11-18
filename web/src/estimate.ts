@@ -14,7 +14,8 @@ export type Estimate = EstimateResult
 
 export function estimate(rows: Row[], utility: string, ftPerKwh: string, daysPerMonth: number): EstimateResult {
   const inputs = rows.map(
-    (r) => new ApplianceInput(r.kind, r.name, r.quantity, r.watts, r.hoursPerDay, r.btu, r.eer, r.loadPercent, r.kwhPerYear),
+    // One card is one appliance, so the engine's quantity is always 1.
+    (r) => new ApplianceInput(r.kind, r.name, '1', r.watts, r.hoursPerDay, r.btu, r.eer, r.loadPercent, r.kwhPerYear),
   )
   return estimateBill(inputs, utility, ftPerKwh, daysPerMonth)
 }
