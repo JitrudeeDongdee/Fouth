@@ -135,9 +135,11 @@ so any difference between the two bills comes only from the appliances:
      message without the card name.
   3. The bill is the cards that are left, and each card's kWh line is looked up by its id.
 - A set-aside card has a red border. It shows "ไม่ได้นำมาคิด" when collapsed, and the
-  reason plus "ยังไม่ได้นำการ์ดนี้มาคิดในบิล" when open. Its slip says "ไม่ได้นำมาคิด n
-  รายการ เพราะข้อมูลไม่ครบ: <names>" under the total. Each set in compare mode reports
-  its own.
+  reason plus "ยังไม่ได้นำการ์ดนี้มาคิดในบิล" when open.
+- On the slip, the "ใช้ไฟจากอะไรบ้าง" list shows every card in list order. A card left out
+  keeps its place with its name in red, an empty bar, and no units or baht; its reason
+  is in the tooltip. The staircase view has no per-card list, so it shows one red line,
+  "ไม่ได้นำมาคิด: <names>". Each set in compare mode reports its own.
 - Opening or closing a card no longer reprints the slip: `collapsed` is left out of what
   the slip compares, since it is not on the paper.
 
@@ -435,6 +437,11 @@ divergence fails loudly instead of passing silently.
   is red ("ไม่ได้นำมาคิด" / "ยังไม่ได้กรอก: กำลังไฟ, ใช้วันละ"), and slip A says
   "ไม่ได้นำมาคิด 1 รายการ … ตู้เย็น 2 ประตู". Set B is unaffected at ฿162.83. Opening and
   closing a card leaves the printer light idle.
+  Inline skipped card (PR #8 merged and live at dc5cfb3; new branch
+  `feature/slip-skipped-inline`): 28 web tests pass and the build succeeds. On slip A
+  the fridge is listed first in red with no bar, units or baht, and the 6 priced cards
+  keep their figures; the dashed box is gone; the staircase view shows "ไม่ได้นำมาคิด:
+  ตู้เย็น 2 ประตู".
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -452,6 +459,5 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. Next, a
-human reviews and merges PR #8 (`feature/slip-toggle-per-set` → `develop`: the per-slip
-toggle and partial pricing), and the merge deploys it.
+PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. PR #8 is merged and live at dc5cfb3. Next, a human reviews and merges the PR for
+`feature/slip-skipped-inline` → `develop`, and the merge deploys it.
