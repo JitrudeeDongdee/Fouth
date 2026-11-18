@@ -124,6 +124,22 @@ so any difference between the two bills comes only from the appliances:
   6. The rest of the bill: service charge, Ft, VAT.
 - The try box uses the calculator's utility and Ft.
 
+### Appliance cards: view mode and edit mode (web only)
+
+- Every card opens in **view mode**: icon, name, spec summary and its units (or
+  "ไม่ได้นำมาคิด"), with a pencil and ✕ on the right. There is nothing to type into, so
+  a tap on the card never lands in a field.
+- The pencil opens **edit mode**: name, "คิดจาก", and the fields. The card is outlined in
+  the accent colour, with a "✓ บันทึก" button. บันทึก, or Enter in a text field, returns
+  it to view mode and puts focus back on its pencil.
+- Values apply as they are typed, so the bill updates live. บันทึก only closes the
+  fields; there is no draft to cancel.
+- Which cards are in edit mode is page state (`editingCards`), not saved. Every card
+  starts in view mode on load. A card just added from the picker opens in edit mode,
+  so its spec can be adjusted straight away.
+- This replaced collapsing and expanding cards (the chevrons and "ย่อ/ขยายทั้งหมด").
+  `Row.collapsed` is still read from older saved lists but is no longer used.
+
 ### A broken card does not void the bill (web only)
 
 - `estimateRows` (in `estimate.ts`) prices a set in three steps:
@@ -134,8 +150,8 @@ so any difference between the two bills comes only from the appliances:
      กำลังไฟ, ใช้วันละ"), else the engine's message mapped to Thai, else the engine's
      message without the card name.
   3. The bill is the cards that are left, and each card's kWh line is looked up by its id.
-- A set-aside card has a red border. It shows "ไม่ได้นำมาคิด" when collapsed, and the
-  reason plus "ยังไม่ได้นำการ์ดนี้มาคิดในบิล" when open.
+- A set-aside card has a red border. In view mode it shows "ไม่ได้นำมาคิด" (reason in
+  the tooltip); in edit mode it shows the reason plus "ยังไม่ได้นำการ์ดนี้มาคิดในบิล".
 - The slip's "ใช้ไฟจากอะไรบ้าง" list is one CSS grid: name | หน่วย | ~บาท, with a small
   header row. The `li`s are `display: contents`, so every row shares the same columns
   and the numbers right-align like a table. Each bar spans the full row under it.
@@ -143,8 +159,9 @@ so any difference between the two bills comes only from the appliances:
   keeps its place with its name in red, an empty bar, and no units or baht; its reason
   is in the tooltip. The staircase view has no per-card list, so it shows one red line,
   "ไม่ได้นำมาคิด: <names>". Each set in compare mode reports its own.
-- Opening or closing a card no longer reprints the slip: `collapsed` is left out of what
-  the slip compares, since it is not on the paper.
+- Switching a card between view and edit mode does not reprint the slip. The edit state
+  is page state, not card data, and `collapsed` (from older saved lists) is left out of
+  what the slip compares.
 
 ### Slip usage toggle (web only)
 
@@ -210,7 +227,7 @@ so any difference between the two bills comes only from the appliances:
 - Picking adds one card named "<category> <brand> <model>", closes the dialog, and
   scrolls the card into view. Reopening starts at the categories. Back or closing clears the search and the brand.
 - On a phone the dialog is a bottom sheet with two category columns.
-- Every card in the list shows its category's line icon, both collapsed and expanded.
+- Every card in the list shows its category's line icon, in view and in edit mode.
   `Row.category` is stored when a card is added from the picker. Cards without it (the
   starter list, older saved lists) get one from `categoryOf`, in this order: air-con
   kind → แอร์; a name equal to or starting with a category's name; label kind → ตู้เย็น;
@@ -448,6 +465,12 @@ divergence fails loudly instead of passing silently.
   Usage table (PR #9 merged; new branch `feature/slip-usage-table`): 28 web tests pass
   and the build succeeds. On slip A all figures sit on exactly two right edges (units,
   baht) at 1280 px and at 375 px; no name wraps at 1280 px, and nothing overflows.
+  Card edit mode (PR #10 merged, live at 264dec4; new branch `feature/card-edit-mode`):
+  28 web tests pass and the build succeeds. In the browser:
+  - On load all 7 cards are in view mode with no inputs and no collapse buttons.
+  - The pencil opens the fields. TV at 120 W, then บันทึก, shows "120 วัตต์ · 5 ชม./วัน"
+    and 18.00 หน่วย, with focus back on the pencil. Enter in a field also saves.
+  - A card added from the picker opens in edit mode.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -465,5 +488,5 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. PRs #8 and #9 are merged into `develop`. Next, a human reviews and merges the PR for
-`feature/slip-usage-table` → `develop`, and the merge deploys it.
+PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. PRs #8, #9 and #10 are merged and live at 264dec4. Next, a human reviews and merges the
+PR for `feature/card-edit-mode` → `develop`, and the merge deploys it.

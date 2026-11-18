@@ -150,33 +150,6 @@ h3 {
   background: var(--accent-soft);
 }
 
-.row-collapsed {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 6px 6px 4px;
-}
-
-.row-summary {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  padding: 6px;
-  cursor: pointer;
-}
-
-.row-summary:hover {
-  background: var(--accent-soft);
-}
-
 .summary-text {
   flex: 1;
   min-width: 0;
@@ -200,13 +173,6 @@ h3 {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.chevron,
-.chevron-btn {
-  color: var(--muted);
-  width: 1.2em;
-  text-align: center;
 }
 
 .small {
@@ -1747,4 +1713,51 @@ input {
 
 .stairs-skipped {
   margin: 0;
+}
+
+/* Cards: view mode shows values only; the pencil opens the fields, บันทึก closes them. */
+.row-view {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+}
+
+.row-view .summary-text {
+  flex: 1;
+}
+
+.edit-btn {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.edit-btn:hover,
+.edit-btn:focus-visible {
+  color: var(--ink);
+}
+
+.row-editing {
+  border-color: var(--accent);
+}
+
+.save-btn {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.save-btn:hover {
+  filter: brightness(1.05);
 }

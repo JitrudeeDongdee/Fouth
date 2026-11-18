@@ -17,6 +17,8 @@ export type IconName =
   | 'info'
   | 'book'
   | 'list'
+  | 'pencil'
+  | 'check'
 
 const PATHS: Record<IconName, JSX.Element> = {
   // Wall split unit with a louvre and three lines of air.
@@ -115,6 +117,13 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M12 6.5v14" />
     </>
   ),
+  pencil: (
+    <>
+      <path d="M15.5 4.5l4 4L8.5 19.5 4 20l.5-4.5z" />
+      <path d="M13.5 6.5l4 4" />
+    </>
+  ),
+  check: <path d="M4.5 12.5l5 5 10-11" />,
   list: (
     <>
       <path d="M9 6.5h11M9 12h11M9 17.5h11" />
