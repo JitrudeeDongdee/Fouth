@@ -32,15 +32,36 @@ const SET_IDS: SetId[] = ['a', 'b']
 
 const SET_LABEL: Record<SetId, string> = { a: 'ชุด A', b: 'ชุด B' }
 
-/** The two ways the result can be printed, chosen in the drawer. */
+/** The two ways the result can be printed, chosen in the sidebar. */
 const BILL_MODES = [
-  { compare: false, title: 'บิลเดียว', detail: 'คิดค่าไฟจากเครื่องใช้ไฟฟ้าชุดเดียว' },
-  {
-    compare: true,
-    title: 'เปรียบเทียบ 2 บิล',
-    detail: 'พิมพ์บิลชุด A กับชุด B แยกกันคนละใบ แล้วบอกส่วนต่างต่อเดือนและต่อปี',
-  },
+  { compare: false, title: 'บิลเดียว', detail: 'คิดจากเครื่องใช้ไฟฟ้าชุดเดียว' },
+  { compare: true, title: 'เปรียบเทียบ 2 บิล', detail: 'ชุด A กับ B แยกคนละใบ' },
 ] as const
+
+/** Below this width the layout is one column and the sidebar slides over the page. */
+const NARROW = '(max-width: 860px)'
+
+/** Whether the desktop sidebar is folded to a rail. A per-viewer convenience, kept apart from the bill data. */
+const NAV_KEY = 'fouth-nav-collapsed'
+
+function loadNavCollapsed(): boolean {
+  try {
+    return localStorage.getItem(NAV_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches)
+  useEffect(() => {
+    const query = window.matchMedia(NARROW)
+    const onChange = () => setNarrow(query.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
 
 type Estimate = ReturnType<typeof estimate>
 
@@ -135,16 +156,63 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
+  // Sidebar: folds to an icon rail on a wide screen, slides over the page on a narrow one.
+  const narrow = useNarrow()
+  const [navCollapsed, setNavCollapsed] = useState(loadNavCollapsed)
+  const [navOpen, setNavOpen] = useState(false)
+  const firstNavItem = useRef<HTMLButtonElement>(null)
+  const sidebar = useRef<HTMLElement>(null)
+  const burger = useRef<HTMLButtonElement>(null)
+
+  // A closed overlay menu is off screen; `inert` keeps it out of the tab order and
+  // away from screen readers without waiting on the slide-out transition.
+  useEffect(() => {
+    const menu = sidebar.current
+    if (!menu) return
+    const closedOverlay = narrow && !navOpen
+    menu.inert = closedOverlay
+    // Closing while focus is inside the menu would strand it on a hidden element.
+    if (closedOverlay && menu.contains(document.activeElement)) burger.current?.focus()
+  }, [narrow, navOpen])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_KEY, navCollapsed ? '1' : '0')
+    } catch {
+      // Storage can be unavailable; the sidebar then simply starts expanded.
+    }
+  }, [navCollapsed])
+
+  // Going wide closes the overlay, so it is not still open the next time the window narrows.
+  useEffect(() => {
+    if (!narrow) setNavOpen(false)
+  }, [narrow])
+
+  useEffect(() => {
+    if (!navOpen) return
+    firstNavItem.current?.focus()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setNavOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
+
+  const navExpanded = narrow ? navOpen : !navCollapsed
+  const toggleNav = () => (narrow ? setNavOpen((o) => !o) : setNavCollapsed((c) => !c))
+  // On a phone the menu covers the page, so picking anything in it also puts it away.
+  const afterNav = () => narrow && setNavOpen(false)
+
   const chooseMode = (wantCompare: boolean) => {
     if (wantCompare && !compare) startCompare()
     if (!wantCompare && compare) stopCompare()
-    closeDrawer()
+    afterNav()
   }
 
-  // The mode picker is a native <dialog>: showModal() gives the focus trap, Esc and the backdrop.
-  const drawer = useRef<HTMLDialogElement>(null)
-  const openDrawer = () => drawer.current?.showModal()
-  const closeDrawer = () => drawer.current?.close()
+  const goTo = (id: string) => {
+    afterNav()
+    const target = document.getElementById(id)
+    if (target instanceof HTMLDetailsElement) target.open = true
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const chosenUtility = UTILITIES.find((u) => u.code === utility) ?? UTILITIES[1]
   // In compare mode both slips share one scale, so equal bars mean equal kWh across the two bills.
@@ -197,7 +265,7 @@ export default function App() {
 
   // Printed once: on the single slip, or under the two slips in compare mode.
   const notes = (
-    <details className="notes">
+    <details className="notes" id="how">
       <summary>คำนวณอย่างไร</summary>
       <ul>
         <li>เครื่องทั่วไป: วัตต์ × ชั่วโมงต่อวัน ÷ 1,000 × จำนวนวัน</li>
@@ -216,275 +284,308 @@ export default function App() {
   )
 
   return (
-    <div className="page">
-      <header className="hero">
-        <h1>คำนวณค่าไฟบ้านโดยประมาณ</h1>
-        <p>
-          ใส่เครื่องใช้ไฟฟ้าในบ้าน สเปค และชั่วโมงใช้งานต่อวัน ระบบจะคำนวณหน่วยไฟต่อเดือน
-          แล้วคิดค่าไฟด้วยอัตราก้าวหน้า ค่า Ft และ VAT 7%
-        </p>
+    <div className={navCollapsed ? 'app nav-collapsed' : 'app'}>
+      <header className="topbar">
+        <button
+          ref={burger}
+          className="icon-btn burger"
+          onClick={toggleNav}
+          aria-expanded={navExpanded}
+          aria-controls="sidebar"
+          aria-label={navExpanded ? 'ปิดเมนู' : 'เปิดเมนู'}
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+        <span className="topbar-brand">Fouth · คำนวณค่าไฟบ้าน</span>
+        <span className="topbar-mode">{compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}</span>
       </header>
 
-      <main className={compare ? 'layout comparing' : 'layout'}>
-        <section className="panel" aria-labelledby="appliances-title">
-          <div className="panel-head">
-            <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
-            <span className="muted">{rows.length} รายการ</span>
-            {rows.length > 0 && (
-              <button className="link-btn" onClick={() => setAllCollapsed(!allCollapsed)}>
-                {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
-              </button>
-            )}
-            <button className="mode-btn" aria-haspopup="dialog" onClick={openDrawer}>
-              <span className="muted small">รูปแบบบิล</span> {compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}{' '}
-              <span aria-hidden="true">▸</span>
-            </button>
-          </div>
+      {narrow && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />}
 
-          {compare && (
-            <div className="compare-bar">
-              <div className="tabs" role="tablist" aria-label="ชุดที่กำลังแก้">
-                {SET_IDS.map((id) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={shown === id}
-                    className={shown === id ? 'tab on' : 'tab'}
-                    onClick={() => setEditing(id)}
-                  >
-                    {SET_LABEL[id]}
-                  </button>
-                ))}
-              </div>
-              <button className="link-btn" onClick={resetBfromA}>
-                คัดลอก A → B
-              </button>
-            </div>
-          )}
-
-          {rows.length === 0 && <p className="empty">ยังไม่มีเครื่องใช้ไฟฟ้า เลือกจากรายการด้านล่างเพื่อเริ่ม</p>}
-
-          <ul className="rows">
-            {rows.map((row, index) =>
-              row.collapsed ? (
-                <li key={row.id} className="row row-collapsed">
-                  <button
-                    className="row-summary"
-                    aria-expanded="false"
-                    onClick={() => update(row.id, { collapsed: false })}
-                  >
-                    <span className="chevron" aria-hidden="true">
-                      ▸
-                    </span>
-                    <span className="summary-text">
-                      <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
-                      <span className="muted small">{specSummary(row)}</span>
-                    </span>
-                    {kwhOf(index) && <span className="summary-kwh">{kwhOf(index)} หน่วย</span>}
-                  </button>
-                  <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
-                    ✕
-                  </button>
-                </li>
-              ) : (
-              <li key={row.id} className="row">
-                <div className="row-top">
-                  <button
-                    className="icon-btn chevron-btn"
-                    aria-expanded="true"
-                    aria-label={`ย่อ ${row.name}`}
-                    onClick={() => update(row.id, { collapsed: true })}
-                  >
-                    ▾
-                  </button>
-                  <input
-                    className="name"
-                    aria-label="ชื่อเครื่องใช้ไฟฟ้า"
-                    value={row.name}
-                    onChange={(e) => update(row.id, { name: e.target.value })}
-                  />
-                  <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
-                    ✕
-                  </button>
-                </div>
-                <label className="kind">
-                  <span>คิดจาก</span>
-                  <select value={row.kind} onChange={(e) => update(row.id, { kind: e.target.value as Kind })}>
-                    {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
-                      <option key={k} value={k}>
-                        {KIND_LABEL[k]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="fields">
-                  {row.kind === 'rated' && (
-                    <>
-                      <Field label="กำลังไฟ" unit="วัตต์" value={row.watts} onChange={(v) => update(row.id, { watts: v })} />
-                      <Field label="ใช้วันละ" unit="ชม." value={row.hoursPerDay} onChange={(v) => update(row.id, { hoursPerDay: v })} />
-                    </>
-                  )}
-                  {row.kind === 'aircon' && (
-                    <>
-                      <Field label="ขนาด" unit="BTU" value={row.btu} onChange={(v) => update(row.id, { btu: v })} />
-                      <Field label="EER" unit="" value={row.eer} onChange={(v) => update(row.id, { eer: v })} />
-                      <Field label="ใช้วันละ" unit="ชม." value={row.hoursPerDay} onChange={(v) => update(row.id, { hoursPerDay: v })} />
-                      <Field
-                        label="คอมเพรสเซอร์ทำงาน"
-                        unit="%"
-                        value={row.loadPercent}
-                        onChange={(v) => update(row.id, { loadPercent: v })}
-                      />
-                    </>
-                  )}
-                  {row.kind === 'label' && (
-                    <Field label="ตามฉลาก" unit="kWh/ปี" value={row.kwhPerYear} onChange={(v) => update(row.id, { kwhPerYear: v })} />
-                  )}
-                  <Field label="จำนวน" unit="เครื่อง" value={row.quantity} onChange={(v) => update(row.id, { quantity: v })} />
-                </div>
+      <aside
+        ref={sidebar}
+        id="sidebar"
+        className={narrow && navOpen ? 'sidebar open' : 'sidebar'}
+        aria-label="เมนู"
+      >
+        <nav>
+          <p className="nav-label">รูปแบบบิล</p>
+          <ul className="nav-list">
+            {BILL_MODES.map((m, i) => (
+              <li key={m.title}>
+                <button
+                  ref={i === 0 ? firstNavItem : undefined}
+                  className={compare === m.compare ? 'nav-item on' : 'nav-item'}
+                  aria-current={compare === m.compare ? 'true' : undefined}
+                  title={m.title}
+                  onClick={() => chooseMode(m.compare)}
+                >
+                  <span className={m.compare ? 'mode-pic two' : 'mode-pic'} aria-hidden="true">
+                    <span />
+                    {m.compare && <span />}
+                  </span>
+                  <span className="nav-text">
+                    <span className="nav-title">{m.title}</span>
+                    <span className="nav-detail">{m.detail}</span>
+                  </span>
+                </button>
               </li>
-              ),
-            )}
+            ))}
           </ul>
 
-          <div className="add">
-            <h3>เพิ่มเครื่องใช้ไฟฟ้า</h3>
-            <div className="chips">
-              {PRESETS.map((p) => (
-                <button key={p.name} className="chip" onClick={() => setRows((all) => [...all, newRow(p)])}>
-                  <span aria-hidden="true">{p.icon}</span> {p.name}
+          <p className="nav-label">ไปที่</p>
+          <ul className="nav-list">
+            {[
+              { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
+              { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
+              { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
+            ].map((link) => (
+              <li key={link.id}>
+                <button className="nav-item" title={link.title} onClick={() => goTo(link.id)}>
+                  <span className="nav-icon" aria-hidden="true">
+                    {link.icon}
+                  </span>
+                  <span className="nav-text">
+                    <span className="nav-title">{link.title}</span>
+                  </span>
                 </button>
-              ))}
-            </div>
-          </div>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
-          <div className="settings">
-            <div className="utility">
-              <span className="field-label" id="utility-label">
-                การไฟฟ้าที่ออกบิล
-              </span>
-              <div className="segmented" role="radiogroup" aria-labelledby="utility-label">
-                {UTILITIES.map((u) => (
-                  <button
-                    key={u.code}
-                    type="button"
-                    role="radio"
-                    aria-checked={utility === u.code}
-                    className={utility === u.code ? 'seg on' : 'seg'}
-                    onClick={() => setUtility(u.code)}
-                  >
-                    <span className="seg-name">
-                      {u.short} {u.name}
-                    </span>
-                    <span className="seg-area">{u.area}</span>
+        {!narrow && (
+          <button className="nav-fold" onClick={() => setNavCollapsed((c) => !c)} aria-label={navCollapsed ? 'ขยายเมนู' : 'ย่อเมนู'}>
+            <span aria-hidden="true">{navCollapsed ? '»' : '«'}</span>
+            <span className="nav-text">ย่อเมนู</span>
+          </button>
+        )}
+      </aside>
+
+      <div className="page">
+        <header className="hero">
+          <h1>คำนวณค่าไฟบ้านโดยประมาณ</h1>
+          <p>
+            ใส่เครื่องใช้ไฟฟ้าในบ้าน สเปค และชั่วโมงใช้งานต่อวัน ระบบจะคำนวณหน่วยไฟต่อเดือน
+            แล้วคิดค่าไฟด้วยอัตราก้าวหน้า ค่า Ft และ VAT 7%
+          </p>
+        </header>
+
+        <main className={compare ? 'layout comparing' : 'layout'}>
+          <section className="panel" aria-labelledby="appliances-title">
+            <div className="panel-head">
+              <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
+              <span className="muted">{rows.length} รายการ</span>
+              {rows.length > 0 && (
+                <button className="link-btn" onClick={() => setAllCollapsed(!allCollapsed)}>
+                  {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
+                </button>
+              )}
+            </div>
+
+            {compare && (
+              <div className="compare-bar">
+                <div className="tabs" role="tablist" aria-label="ชุดที่กำลังแก้">
+                  {SET_IDS.map((id) => (
+                    <button
+                      key={id}
+                      role="tab"
+                      aria-selected={shown === id}
+                      className={shown === id ? 'tab on' : 'tab'}
+                      onClick={() => setEditing(id)}
+                    >
+                      {SET_LABEL[id]}
+                    </button>
+                  ))}
+                </div>
+                <button className="link-btn" onClick={resetBfromA}>
+                  คัดลอก A → B
+                </button>
+              </div>
+            )}
+
+            {rows.length === 0 && <p className="empty">ยังไม่มีเครื่องใช้ไฟฟ้า เลือกจากรายการด้านล่างเพื่อเริ่ม</p>}
+
+            <ul className="rows">
+              {rows.map((row, index) =>
+                row.collapsed ? (
+                  <li key={row.id} className="row row-collapsed">
+                    <button
+                      className="row-summary"
+                      aria-expanded="false"
+                      onClick={() => update(row.id, { collapsed: false })}
+                    >
+                      <span className="chevron" aria-hidden="true">
+                        ▸
+                      </span>
+                      <span className="summary-text">
+                        <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
+                        <span className="muted small">{specSummary(row)}</span>
+                      </span>
+                      {kwhOf(index) && <span className="summary-kwh">{kwhOf(index)} หน่วย</span>}
+                    </button>
+                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
+                      ✕
+                    </button>
+                  </li>
+                ) : (
+                <li key={row.id} className="row">
+                  <div className="row-top">
+                    <button
+                      className="icon-btn chevron-btn"
+                      aria-expanded="true"
+                      aria-label={`ย่อ ${row.name}`}
+                      onClick={() => update(row.id, { collapsed: true })}
+                    >
+                      ▾
+                    </button>
+                    <input
+                      className="name"
+                      aria-label="ชื่อเครื่องใช้ไฟฟ้า"
+                      value={row.name}
+                      onChange={(e) => update(row.id, { name: e.target.value })}
+                    />
+                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
+                      ✕
+                    </button>
+                  </div>
+                  <label className="kind">
+                    <span>คิดจาก</span>
+                    <select value={row.kind} onChange={(e) => update(row.id, { kind: e.target.value as Kind })}>
+                      {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+                        <option key={k} value={k}>
+                          {KIND_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="fields">
+                    {row.kind === 'rated' && (
+                      <>
+                        <Field label="กำลังไฟ" unit="วัตต์" value={row.watts} onChange={(v) => update(row.id, { watts: v })} />
+                        <Field label="ใช้วันละ" unit="ชม." value={row.hoursPerDay} onChange={(v) => update(row.id, { hoursPerDay: v })} />
+                      </>
+                    )}
+                    {row.kind === 'aircon' && (
+                      <>
+                        <Field label="ขนาด" unit="BTU" value={row.btu} onChange={(v) => update(row.id, { btu: v })} />
+                        <Field label="EER" unit="" value={row.eer} onChange={(v) => update(row.id, { eer: v })} />
+                        <Field label="ใช้วันละ" unit="ชม." value={row.hoursPerDay} onChange={(v) => update(row.id, { hoursPerDay: v })} />
+                        <Field
+                          label="คอมเพรสเซอร์ทำงาน"
+                          unit="%"
+                          value={row.loadPercent}
+                          onChange={(v) => update(row.id, { loadPercent: v })}
+                        />
+                      </>
+                    )}
+                    {row.kind === 'label' && (
+                      <Field label="ตามฉลาก" unit="kWh/ปี" value={row.kwhPerYear} onChange={(v) => update(row.id, { kwhPerYear: v })} />
+                    )}
+                    <Field label="จำนวน" unit="เครื่อง" value={row.quantity} onChange={(v) => update(row.id, { quantity: v })} />
+                  </div>
+                </li>
+                ),
+              )}
+            </ul>
+
+            <div className="add">
+              <h3>เพิ่มเครื่องใช้ไฟฟ้า</h3>
+              <div className="chips">
+                {PRESETS.map((p) => (
+                  <button key={p.name} className="chip" onClick={() => setRows((all) => [...all, newRow(p)])}>
+                    <span aria-hidden="true">{p.icon}</span> {p.name}
                   </button>
                 ))}
               </div>
             </div>
-            <Field label="จำนวนวันในเดือน" unit="วัน" value={days} onChange={setDays} />
-            <Field label="ค่า Ft" unit="บาท/หน่วย" value={ft} onChange={setFt} />
-          </div>
-          <p className="hint">
-            กฟน. กับ กฟภ. คิดค่าไฟหน่วยละเท่ากัน ต่างกันที่รหัสประเภทบนบิล · ค่า Ft
-            เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นคืองวด ก.ย.–ธ.ค. 2569
-          </p>
-        </section>
 
-        <section className="printer" aria-labelledby="result-title">
-          <h2 id="result-title" className="visually-hidden">
-            ค่าไฟโดยประมาณต่อเดือน
-          </h2>
-          <div className="printer-head" aria-hidden="true">
-            <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
-            <span className={printing ? 'printer-led busy' : 'printer-led'} />
-          </div>
-
-          {/* A mode change mounts fresh slips, which feed in from the class they ship with. */}
-          <div className={compare ? 'slips two' : 'slips'} ref={feed} key={compare ? 'compare' : 'single'}>
-            {(compare ? SET_IDS : (['a'] as SetId[])).map((id) => (
-              <div className="slip-col" key={id}>
-                <div className="printer-slot" aria-hidden="true" />
-                <div className="paper-feed" aria-live="polite">
-                  <Slip
-                    result={id === 'a' ? resultA : (resultB ?? resultA)}
-                    setLabel={compare ? SET_LABEL[id] : null}
-                    editing={compare && shown === id}
-                    onEdit={() => setEditing(id)}
-                    meta={`${chosenUtility.short} · ${days} วัน · Ft ${ft}`}
-                    stamp={stamp}
-                    utilityShort={chosenUtility.short}
-                    maxKwh={maxKwh}
-                  >
-                    {!compare && notes}
-                  </Slip>
+            <div className="settings">
+              <div className="utility">
+                <span className="field-label" id="utility-label">
+                  การไฟฟ้าที่ออกบิล
+                </span>
+                <div className="segmented" role="radiogroup" aria-labelledby="utility-label">
+                  {UTILITIES.map((u) => (
+                    <button
+                      key={u.code}
+                      type="button"
+                      role="radio"
+                      aria-checked={utility === u.code}
+                      className={utility === u.code ? 'seg on' : 'seg'}
+                      onClick={() => setUtility(u.code)}
+                    >
+                      <span className="seg-name">
+                        {u.short} {u.name}
+                      </span>
+                      <span className="seg-area">{u.area}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {compare && (
-            <div className="compare-summary panel" aria-live="polite">
-              <h3>ผลเทียบ</h3>
-              {difference === null ? (
-                <p className="muted">ยังเทียบไม่ได้ เพราะข้อมูลชุดใดชุดหนึ่งไม่ถูกต้อง</p>
-              ) : (
-                <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
-                  {difference === 0
-                    ? 'สองชุดค่าไฟเท่ากัน'
-                    : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
-                        fromSatang(Math.abs(difference) * 12),
-                      )} ต่อปี`}
-                </p>
-              )}
-              {notes}
+              <Field label="จำนวนวันในเดือน" unit="วัน" value={days} onChange={setDays} />
+              <Field label="ค่า Ft" unit="บาท/หน่วย" value={ft} onChange={setFt} />
             </div>
-          )}
-        </section>
-      </main>
+            <p className="hint">
+              กฟน. กับ กฟภ. คิดค่าไฟหน่วยละเท่ากัน ต่างกันที่รหัสประเภทบนบิล · ค่า Ft
+              เปลี่ยนทุก 4 เดือน ค่าเริ่มต้นคืองวด ก.ย.–ธ.ค. 2569
+            </p>
+          </section>
 
-      <Footer />
+          <section className="printer" id="result" aria-labelledby="result-title">
+            <h2 id="result-title" className="visually-hidden">
+              ค่าไฟโดยประมาณต่อเดือน
+            </h2>
+            <div className="printer-head" aria-hidden="true">
+              <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
+              <span className={printing ? 'printer-led busy' : 'printer-led'} />
+            </div>
 
-      <dialog
-        className="drawer"
-        ref={drawer}
-        aria-labelledby="drawer-title"
-        // A click that lands on the <dialog> itself, not its content, is a click on the backdrop.
-        onClick={(e) => e.target === e.currentTarget && closeDrawer()}
-      >
-        <div className="drawer-body">
-          <div className="drawer-head">
-            <h2 id="drawer-title">เลือกรูปแบบบิล</h2>
-            <button className="icon-btn" onClick={closeDrawer} aria-label="ปิด">
-              ✕
-            </button>
-          </div>
-          <div className="mode-list" role="radiogroup" aria-labelledby="drawer-title">
-            {BILL_MODES.map((m) => (
-              <button
-                key={m.title}
-                type="button"
-                role="radio"
-                aria-checked={compare === m.compare}
-                className={compare === m.compare ? 'mode-card on' : 'mode-card'}
-                onClick={() => chooseMode(m.compare)}
-              >
-                <span className={m.compare ? 'mode-pic two' : 'mode-pic'} aria-hidden="true">
-                  <span />
-                  {m.compare && <span />}
-                </span>
-                <span className="mode-text">
-                  <span className="mode-title">{m.title}</span>
-                  <span className="muted small">{m.detail}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="hint">
-            โหมดเปรียบเทียบเริ่มชุด B จากสำเนาของชุด A แก้ทีละชุดได้จากแท็บเหนือรายการเครื่องใช้ไฟฟ้า
-            ข้อมูลชุด B ยังเก็บไว้แม้กลับมาเป็นบิลเดียว
-          </p>
-        </div>
-      </dialog>
+            {/* A mode change mounts fresh slips, which feed in from the class they ship with. */}
+            <div className={compare ? 'slips two' : 'slips'} ref={feed} key={compare ? 'compare' : 'single'}>
+              {(compare ? SET_IDS : (['a'] as SetId[])).map((id) => (
+                <div className="slip-col" key={id}>
+                  <div className="printer-slot" aria-hidden="true" />
+                  <div className="paper-feed" aria-live="polite">
+                    <Slip
+                      result={id === 'a' ? resultA : (resultB ?? resultA)}
+                      setLabel={compare ? SET_LABEL[id] : null}
+                      editing={compare && shown === id}
+                      onEdit={() => setEditing(id)}
+                      meta={`${chosenUtility.short} · ${days} วัน · Ft ${ft}`}
+                      stamp={stamp}
+                      utilityShort={chosenUtility.short}
+                      maxKwh={maxKwh}
+                    >
+                      {!compare && notes}
+                    </Slip>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {compare && (
+              <div className="compare-summary panel" aria-live="polite">
+                <h3>ผลเทียบ</h3>
+                {difference === null ? (
+                  <p className="muted">ยังเทียบไม่ได้ เพราะข้อมูลชุดใดชุดหนึ่งไม่ถูกต้อง</p>
+                ) : (
+                  <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
+                    {difference === 0
+                      ? 'สองชุดค่าไฟเท่ากัน'
+                      : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
+                          fromSatang(Math.abs(difference) * 12),
+                        )} ต่อปี`}
+                  </p>
+                )}
+                {notes}
+              </div>
+            )}
+          </section>
+        </main>
+
+        <Footer />
+      </div>
     </div>
   )
 }

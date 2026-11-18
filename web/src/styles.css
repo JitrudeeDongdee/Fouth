@@ -1,4 +1,5 @@
 :root {
+  --topbar-h: 52px;
   --bg: #f6f7f4;
   --panel: #ffffff;
   --ink: #1d2320;
@@ -88,7 +89,8 @@ body {
 
 .printer {
   position: sticky;
-  top: 16px;
+  /* Clear of the sticky top bar. */
+  top: calc(var(--topbar-h) + 16px);
 }
 
 @media (max-width: 860px) {
@@ -730,7 +732,7 @@ input {
 }
 
 /* ---------------------------------------------------------------------------
-   Bill mode: a drawer picks one bill or two, and compare prints two slips.
+   Bill mode: the sidebar picks one bill or two, and compare prints two slips.
    --------------------------------------------------------------------------- */
 
 .visually-hidden {
@@ -741,22 +743,6 @@ input {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
-}
-
-.mode-btn {
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 600;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.mode-btn:hover {
-  border-color: var(--accent);
 }
 
 /* Two slips need room, so compare mode hands the result column the larger share. */
@@ -836,105 +822,6 @@ input {
   font-size: 1rem;
 }
 
-/* Drawer: a native <dialog> slid in from the right edge (from the bottom on a phone). */
-.drawer {
-  margin: 0 0 0 auto;
-  width: min(420px, 100%);
-  max-width: 100%;
-  height: 100%;
-  max-height: 100%;
-  padding: 0;
-  border: none;
-  background: var(--panel);
-  color: var(--ink);
-  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
-}
-
-.drawer[open] {
-  animation: drawer-in 0.22s ease-out;
-}
-
-.drawer::backdrop {
-  background: rgba(10, 14, 12, 0.45);
-}
-
-@keyframes drawer-in {
-  from {
-    transform: translateX(100%);
-  }
-}
-
-@media (max-width: 560px) {
-  .drawer {
-    /* A modal dialog is pinned to both edges, which would stretch an auto height
-       to the full screen; letting go of the top lets the sheet hug its content. */
-    top: auto;
-    margin: auto 0 0;
-    width: 100%;
-    height: auto;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.25);
-  }
-
-  .drawer[open] {
-    animation-name: sheet-in;
-  }
-}
-
-@keyframes sheet-in {
-  from {
-    transform: translateY(100%);
-  }
-}
-
-.drawer-body {
-  padding: 18px;
-}
-
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.mode-list {
-  display: grid;
-  gap: 10px;
-}
-
-.mode-card {
-  font: inherit;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  text-align: left;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: inherit;
-  cursor: pointer;
-}
-
-.mode-card:hover {
-  border-color: var(--accent);
-}
-
-.mode-card.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.mode-text {
-  display: grid;
-  gap: 2px;
-}
-
-.mode-title {
-  font-weight: 700;
-}
-
 /* Little paper slips drawn in CSS: one for a single bill, two for compare. */
 .mode-pic {
   flex: none;
@@ -954,8 +841,222 @@ input {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
+/* ---------------------------------------------------------------------------
+   App frame: a sticky top bar with the menu button, and a sidebar that folds
+   to an icon rail on a wide screen and slides over the page on a narrow one.
+   --------------------------------------------------------------------------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: var(--topbar-h) 1fr;
+  min-height: 100vh;
+}
+
+.topbar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--topbar-h);
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.burger {
+  font-size: 1.15rem;
+}
+
+.topbar-brand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.topbar-mode {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.sidebar {
+  position: sticky;
+  top: var(--topbar-h);
+  height: calc(100vh - var(--topbar-h));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.sidebar nav {
+  flex: 1;
+}
+
+.nav-label {
+  margin: 10px 10px 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.nav-item,
+.nav-fold {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover,
+.nav-fold:hover {
+  background: var(--accent-soft);
+}
+
+.nav-item.on {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.nav-icon {
+  flex: none;
+  width: 36px;
+  text-align: center;
+}
+
+.nav-text {
+  display: grid;
+  min-width: 0;
+}
+
+.nav-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.nav-detail {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.nav-fold {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.nav-fold > span:first-child {
+  width: 36px;
+  text-align: center;
+}
+
+.sidebar .mode-pic {
+  width: 36px;
+  gap: 2px;
+}
+
+.sidebar .mode-pic > span {
+  width: 15px;
+  height: 22px;
+  background-size: 9px 13px;
+  background-position: 3px 4px;
+}
+
+/* Section links land below the sticky top bar, not under it. */
+#appliances-title,
+#result,
+#how {
+  scroll-margin-top: calc(var(--topbar-h) + 12px);
+}
+
+@media (min-width: 861px) {
+  .app.nav-collapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .nav-collapsed .nav-text,
+  .nav-collapsed .nav-label {
+    display: none;
+  }
+
+  .nav-collapsed .nav-list + .nav-label,
+  .nav-collapsed .nav-list:not(:first-of-type) {
+    margin-top: 10px;
+  }
+
+  .nav-collapsed .nav-item,
+  .nav-collapsed .nav-fold {
+    justify-content: center;
+    padding: 8px 4px;
+  }
+}
+
+@media (max-width: 860px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(280px, 85vw);
+    height: auto;
+    transform: translateX(-100%);
+    /* Hidden, not just moved off screen, so a closed menu cannot take keyboard focus. */
+    visibility: hidden;
+    transition:
+      transform 0.2s ease-out,
+      visibility 0s linear 0.2s;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, 0.25);
+  }
+
+  .sidebar.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease-out;
+  }
+}
+
+.nav-backdrop {
+  position: fixed;
+  inset: var(--topbar-h) 0 0;
+  z-index: 25;
+  background: rgba(10, 14, 12, 0.45);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .drawer[open] {
-    animation: none;
+  .sidebar,
+  .sidebar.open {
+    transition: none;
   }
 }

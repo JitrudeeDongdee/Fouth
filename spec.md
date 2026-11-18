@@ -63,10 +63,8 @@ so the difference is only ever the appliances:
 - Set A is the list that already existed; set B is created by copying A the first time
   compare mode is turned on (a list against an empty one says nothing). `copyRows` gives
   every copied row a fresh id, so the two sets never share a row or a React key.
-- The mode is picked in a drawer ("รูปแบบบิล" button above the appliance list): บิลเดียว
-  or เปรียบเทียบ 2 บิล. It is a native `<dialog>` opened with `showModal()`, so focus
-  trapping, Esc and the backdrop come from the browser; a click on the backdrop closes
-  it. It slides in from the right, and from the bottom as a sheet under 560 px.
+- The mode is picked in the sidebar (see "App frame" below): บิลเดียว or เปรียบเทียบ 2 บิล.
+  The top bar shows the current mode as a chip.
 - One set is edited at a time (tabs), while the result prints **two separate slips**,
   one per set, each with its own total, tariff code, usage bars and bill table. The
   slip of the set being edited is marked "กำลังแก้ชุดนี้"; the other has "แก้ชุดนี้" to
@@ -80,6 +78,22 @@ so the difference is only ever the appliances:
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
+
+### App frame: top bar + sidebar (web only)
+
+- A sticky top bar (`--topbar-h`, 52 px) holds the ☰ menu button, the name, and the
+  current bill mode.
+- The sidebar is a navigation menu: section "รูปแบบบิล" (the two modes, with small slip
+  pictures) and section "ไปที่" (เครื่องใช้ไฟฟ้า, ผลคำนวณ, วิธีคำนวณ; the last opens the
+  notes `<details>` before scrolling). Targets carry `scroll-margin-top` so they land
+  below the top bar.
+- Above 860 px the sidebar sits in the page grid (236 px) and ☰ or "« ย่อเมนู" folds it
+  to a 64 px icon rail. The folded state is a per-viewer convenience kept in its own
+  `localStorage` key, `fouth-nav-collapsed`, apart from the bill data.
+- At 860 px and below it is an overlay sliding in from the left over a backdrop. Esc, the
+  backdrop or choosing an item closes it. When closed it is `inert`, so it cannot
+  take focus while off screen, and focus returns to ☰ if it was inside the menu.
+- This replaced the earlier mode drawer (a `<dialog>`), which only picked the mode.
 
 ### The result as a printed slip (web only)
 
@@ -184,11 +198,14 @@ divergence fails loudly instead of passing silently.
   printed-slip UI checked in the browser at desktop and 375 px. PR #4 merged into
   `develop`; the printed slip (406ffce) is PR #5 into `develop`, open.
 - `feature/bill-mode-drawer` (branched from `feature/collapsible-appliances`, so it
-  carries 406ffce until PR #5 merges): mode drawer + two separate slips in compare mode.
+  carries 406ffce until PR #5 merges): two separate slips in compare mode, then the
+  mode drawer replaced by a top bar + collapsible sidebar menu. PR #6 into `develop`.
   12 web tests pass, `npm run build` succeeds; checked in the browser at 1280 px (slips
   side by side, ฿780.09 vs ฿162.83 with the air conditioner removed from B, "ชุด B
   ถูกกว่า ฿617.26 ต่อเดือน · ฿7,407.12 ต่อปี") and 375 px (slips stacked, drawer as a
-  bottom sheet, no horizontal overflow).
+  bottom sheet, no horizontal overflow). Sidebar checked at 1280 px (rail fold kept
+  after reload, "วิธีคำนวณ" opens the notes) and 375 px (overlay opens with focus on the
+  first item; Esc, backdrop and picking a mode close it; `inert` when closed).
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -206,5 +223,5 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-Human reviews and merges PR #5 (printed slip) into `develop`, then the bill-mode drawer
-branch gets its own PR into `develop`; each merge deploys to GitHub Pages.
+PR #5 (printed slip) is merged. A human reviews and merges PR #6 (two slips + sidebar)
+into `develop`; the merge deploys to GitHub Pages.
