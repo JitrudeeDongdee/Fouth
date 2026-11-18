@@ -70,8 +70,36 @@ export const CATEGORIES: Category[] = [
 
 /** The preset a brand model adds: its category's default usage with the maker's figure. */
 export function presetFromModel(category: Category, model: CatalogModel): Preset {
-  return { ...category.generic[0], ...model.spec, name: `${category.short} ${model.brand} ${model.model}` }
+  return {
+    ...category.generic[0],
+    ...model.spec,
+    name: `${category.short} ${model.brand} ${model.model}`,
+    category: category.id,
+  }
 }
+
+/** A category's generic preset, tagged with the category so the card gets its icon. */
+export const genericPreset = (category: Category, index = 0): Preset => ({ ...category.generic[index], category: category.id })
+
+/**
+ * The category a card belongs to. Cards added from the picker carry it; older cards (the
+ * starter list, lists saved before categories) are matched by kind and name, and anything
+ * that matches nothing is "อื่น ๆ".
+ */
+export function categoryOf(row: Pick<Preset, 'kind' | 'name' | 'category'>): CategoryId {
+  if (row.category && CATEGORIES.some((c) => c.id === row.category)) return row.category
+  if (row.kind === 'aircon') return 'aircon'
+  const name = row.name.trim()
+  const byName = CATEGORIES.find(
+    (c) => c.id !== 'other' && (c.generic.some((g) => g.name === name) || name.startsWith(c.short)),
+  )
+  if (byName) return byName.id
+  if (row.kind === 'label') return 'fridge'
+  return 'other'
+}
+
+export const iconOf = (row: Pick<Preset, 'kind' | 'name' | 'category'>): IconName =>
+  CATEGORIES.find((c) => c.id === categoryOf(row))?.icon ?? 'plug'
 
 /** The brands in a category, in the order they first appear. */
 export const brandsOf = (category: Category) => [...new Set(category.models.map((m) => m.brand))]

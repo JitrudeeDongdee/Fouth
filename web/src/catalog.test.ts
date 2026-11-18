@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { brandsOf, CATEGORIES, presetFromModel, type Category } from './catalog'
+import { brandsOf, CATEGORIES, categoryOf, genericPreset, presetFromModel, type Category } from './catalog'
+import { defaultRows } from './appliances'
 
 describe('appliance catalog', () => {
   it('gives every category a no-brand default to fall back on', () => {
@@ -41,5 +42,22 @@ describe('appliance catalog', () => {
     expect(preset.hoursPerDay).toBe(aircon.generic[0].hoursPerDay)
     expect(preset.loadPercent).toBe(aircon.generic[0].loadPercent)
     expect(brandsOf(aircon)).toEqual(['Acme'])
+  })
+
+  it('tags picked cards with their category, so each card gets its icon', () => {
+    const tv = CATEGORIES.find((c) => c.id === 'tv')!
+    expect(genericPreset(tv).category).toBe('tv')
+  })
+
+  it('works out the category of cards saved before categories existed', () => {
+    expect(defaultRows().map(categoryOf)).toEqual(['aircon', 'fridge', 'tv', 'bulb'])
+    const row = (kind: 'rated' | 'aircon' | 'label', name: string) => ({ kind, name })
+    expect(categoryOf(row('aircon', 'ห้องนอน'))).toBe('aircon')
+    expect(categoryOf(row('rated', 'หลอดไฟ LED'))).toBe('bulb')
+    expect(categoryOf(row('rated', 'ทีวี ห้องนั่งเล่น'))).toBe('tv')
+    expect(categoryOf(row('label', 'ตู้แช่'))).toBe('fridge')
+    expect(categoryOf(row('rated', 'ไดร์เป่าผม'))).toBe('other')
+    // A stored category wins over the name.
+    expect(categoryOf({ ...row('rated', 'ไดร์เป่าผม'), category: 'fan' })).toBe('fan')
   })
 })

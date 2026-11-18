@@ -1,6 +1,6 @@
 import { useState, type RefObject } from 'react'
 import { specSummary, type Preset } from './appliances'
-import { brandsOf, CATEGORIES, presetFromModel, type Category, type CategoryId } from './catalog'
+import { brandsOf, CATEGORIES, genericPreset, presetFromModel, type Category, type CategoryId } from './catalog'
 import { Icon } from './Icon'
 
 /** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
@@ -28,7 +28,7 @@ export function AppliancePicker(props: {
   const close = () => props.dialog.current?.close()
   const open = (c: Category) => {
     if (c.id === 'other') {
-      props.onPick(c.generic[0])
+      props.onPick(genericPreset(c))
       return
     }
     setCategoryId(c.id)
@@ -93,7 +93,7 @@ export function AppliancePicker(props: {
             <ul className="model-list" aria-label="ค่าทั่วไป">
               {category.generic.map((g, i) => (
                 <li key={g.name}>
-                  <button className="model generic" onClick={() => props.onPick(g)}>
+                  <button className="model generic" onClick={() => props.onPick(genericPreset(category, i))}>
                     <Icon name={category.icon} size={28} />
                     <span className="model-text">
                       <span className="model-name">

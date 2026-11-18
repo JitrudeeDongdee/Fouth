@@ -1635,3 +1635,8 @@ input {
   padding: 4px 0;
   background: var(--panel);
 }
+
+/* The appliance's line icon on its card, in the same green as the picker. */
+.row-icon {
+  color: var(--bar);
+}

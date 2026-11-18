@@ -14,6 +14,7 @@ import {
 import { estimate, tariffCodes, type Estimate } from './estimate'
 import { baht } from './format'
 import { AppliancePicker } from './AppliancePicker'
+import { iconOf } from './catalog'
 import { Icon } from './Icon'
 import { LearnPage } from './LearnPage'
 import { currentTier, Stairs, tierRange } from './TierPanel'
@@ -630,6 +631,7 @@ export default function App() {
                       <span className="chevron" aria-hidden="true">
                         ▸
                       </span>
+                      <Icon name={iconOf(row)} size={26} className="row-icon" />
                       <span className="summary-text">
                         <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
                         <span className="muted small">{specSummary(row)}</span>
@@ -651,6 +653,7 @@ export default function App() {
                     >
                       ▾
                     </button>
+                    <Icon name={iconOf(row)} size={26} className="row-icon" />
                     <input
                       className="name"
                       aria-label="ชื่อเครื่องใช้ไฟฟ้า"

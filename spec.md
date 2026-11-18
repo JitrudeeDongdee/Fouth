@@ -176,6 +176,11 @@ so any difference between the two bills comes only from the appliances:
 - Picking adds one card named "<category> <brand> <model>", closes the dialog, and
   scrolls the card into view. Reopening starts at the categories.
 - On a phone the dialog is a bottom sheet with two category columns.
+- Every card in the list shows its category's line icon, both collapsed and expanded.
+  `Row.category` is stored when a card is added from the picker. Cards without it (the
+  starter list, older saved lists) get one from `categoryOf`, in this order: air-con
+  kind → แอร์; a name equal to or starting with a category's name; label kind → ตู้เย็น;
+  anything else → อื่น ๆ (plug icon).
 
 ### Appliance catalog (web only)
 
@@ -384,6 +389,8 @@ divergence fails loudly instead of passing silently.
   to 6; picking NR-BX421BPST adds "ตู้เย็น Panasonic NR-BX421BPST" at 385.44 kWh/ปี;
   "ที่มา" opens the maker page in a new tab; reopening starts at the categories. At
   375 px it is a bottom sheet whose list scrolls, with no overflow.
+  Card icons: 23 web tests (2 new for `categoryOf`). In the browser all 7 cards on the
+  page show an icon, including cards saved before categories existed.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

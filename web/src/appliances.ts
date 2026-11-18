@@ -1,4 +1,6 @@
 // Form model for one appliance row, plus ready-made presets.
+import type { CategoryId } from './catalog'
+
 // Every number is kept as the string the user typed; the engine parses it exactly.
 
 export type Kind = 'rated' | 'aircon' | 'label'
@@ -15,6 +17,8 @@ export interface Row {
   kwhPerYear: string
   /** Shows only the one-line summary. Optional so lists saved before this field still load. */
   collapsed?: boolean
+  /** The picker category it was added from, which picks its icon; inferred when missing. */
+  category?: CategoryId
 }
 
 export type Preset = Omit<Row, 'id' | 'collapsed'>
