@@ -71,7 +71,8 @@ so any difference between the two bills comes only from the appliances:
   every copied row a fresh id, so the two sets never share a row or a React key.
 - The mode is picked in the sidebar (see "App frame" below): บิลเดียว or เปรียบเทียบ 2 บิล.
   The top bar shows the current mode as a chip.
-- The mode is in the URL: `?mode=single` or `?mode=compare`.
+- The mode is in the URL: `?mode=single` or `?mode=compare`. The result page is too:
+  `?view=bill` or `?view=tiers` (see "Tiers tab" below). Both follow the same rules.
   - On load, a valid `?mode=` wins over the mode saved in `localStorage`. A missing or
     unknown value falls back to the saved mode, and the URL is corrected with
     `replaceState`, keeping any other query parameters and the hash.
@@ -99,10 +100,16 @@ so any difference between the two bills comes only from the appliances:
 
 ### Tiers tab: the progressive rate step by step (web only)
 
-- Tabs above the result switch between "บิล" (the printed slips) and "ขั้นบันได". The
-  sidebar's "ไปที่ → ขั้นบันได" opens the tab and scrolls to it. "วิธีคำนวณ" switches
-  back to the bill, because the notes live on the slips. The tab is page state only,
-  not in the URL.
+- The bill and the tiers table are two pages of the same app, picked by `?view=bill` or
+  `?view=tiers`, the same way `?mode=` picks the mode.
+  - On load a valid `?view=` opens that page. A missing or unknown value opens the bill,
+    and the URL is corrected with `replaceState`.
+  - Changing page pushes a history entry; Back/Forward step between pages.
+  - Mode and view are independent: switching mode keeps the page, and the reverse.
+- Ways to switch page: the tabs above the result, the sidebar's "หน้า" section
+  (`<a href="?mode=…&view=…">` links, so they can be copied or opened in a new tab), or
+  "ไปที่ → วิธีคำนวณ", which switches to the bill because the notes live on the slips.
+  The top-bar chip shows "· ขั้นบันได" on that page.
 - One panel per set (two side by side in compare mode, from 560 px of printer width).
   Each panel has:
   - Why this tariff: up to 150 units → small-household code, over → large. The limit
@@ -277,6 +284,11 @@ divergence fails loudly instead of passing silently.
   tests); 13 web tests; checked in the browser at 1280 px (48.66 kWh on 1.1.1: 35.23 +
   29.88 + 70.98 = 136.09, matching the bill; tiers 4 and 5 shown unreached; compare
   shows two panels) and 375 px (panels stacked, no overflow).
+  `?view=` checked in the browser: load adds `view=bill`; the sidebar link and the tab
+  push one entry each; switching mode keeps the view; Back ×3 and Forward step through
+  every page; `?view=tiers` opens the table directly; "วิธีคำนวณ" from the table
+  switches to the bill and opens the notes; `view=nope&x=1#a` falls back to the bill
+  and keeps `x=1#a`.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

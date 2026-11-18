@@ -49,31 +49,6 @@ const BILL_MODES = [
   { compare: true, title: 'เปรียบเทียบ 2 บิล', detail: 'ชุด A กับ B แยกคนละใบ' },
 ] as const
 
-/**
- * The bill mode lives in the URL (`?mode=single` / `?mode=compare`), so a link opens the
- * same mode and the browser's Back button steps between modes. Anything else reads as
- * "not given", and the mode saved in localStorage applies.
- */
-type ModeParam = 'single' | 'compare'
-
-const modeParam = (compare: boolean): ModeParam => (compare ? 'compare' : 'single')
-
-function modeFromUrl(): boolean | null {
-  const value = new URLSearchParams(window.location.search).get('mode')
-  return value === 'compare' ? true : value === 'single' ? false : null
-}
-
-/** The current address with only `mode` changed, so any other query or hash is kept. */
-function urlWithMode(compare: boolean): string {
-  const url = new URL(window.location.href)
-  url.searchParams.set('mode', modeParam(compare))
-  return url.pathname + url.search + url.hash
-}
-
-/** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
-const presetSummary = (preset: Preset) =>
-  preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
-
 /** What the result area shows: the printed bill, or the progressive rate step by step. */
 type ResultView = 'bill' | 'tiers'
 
@@ -81,6 +56,52 @@ const RESULT_VIEWS: { id: ResultView; title: string }[] = [
   { id: 'bill', title: 'บิล' },
   { id: 'tiers', title: 'ขั้นบันได' },
 ]
+
+/**
+ * Which page is open lives in the URL, so a link opens the same page and the browser's
+ * Back button steps between pages:
+ *   ?mode=single | compare   one bill or two
+ *   ?view=bill   | tiers     the printed bill or the progressive-rate table
+ * A missing or unknown value reads as "not given": the mode falls back to the one saved
+ * in localStorage, the view to the bill.
+ */
+interface PageState {
+  compare: boolean
+  view: ResultView
+}
+
+const modeParam = (compare: boolean) => (compare ? 'compare' : 'single')
+
+function pageFromUrl(): { compare: boolean | null; view: ResultView | null } {
+  const params = new URLSearchParams(window.location.search)
+  const mode = params.get('mode')
+  const view = params.get('view')
+  return {
+    compare: mode === 'compare' ? true : mode === 'single' ? false : null,
+    view: view === 'bill' || view === 'tiers' ? view : null,
+  }
+}
+
+const urlMatches = (page: PageState) => {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('mode') === modeParam(page.compare) && params.get('view') === page.view
+}
+
+/** The current address with `mode` and `view` set, so any other query or hash is kept. */
+function urlFor(page: PageState): string {
+  const url = new URL(window.location.href)
+  url.searchParams.set('mode', modeParam(page.compare))
+  url.searchParams.set('view', page.view)
+  return url.pathname + url.search + url.hash
+}
+
+/** A plain left click on an in-page link is handled by the page; anything else is the browser's. */
+const isPlainClick = (e: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }) =>
+  e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+
+/** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
+const presetSummary = (preset: Preset) =>
+  preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
 
 /** Below this width the layout is one column and the sidebar slides over the page. */
 const NARROW = '(max-width: 860px)'
@@ -148,7 +169,7 @@ export default function App() {
   const initial = useMemo(() => {
     const a = saved?.rows ?? defaultRows()
     // A link's ?mode= wins over the mode this browser last used.
-    const compare = modeFromUrl() ?? saved?.compare ?? false
+    const compare = pageFromUrl().compare ?? saved?.compare ?? false
     const savedB = saved?.rowsB ?? []
     // Opening ?mode=compare with no set B yet starts B from a copy of A, as the menu does.
     const b = compare && savedB.length === 0 ? copyRows(a) : savedB
@@ -159,7 +180,7 @@ export default function App() {
   const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
   // The result area shows either the printed bill or how the progressive rate was applied.
-  const [view, setView] = useState<ResultView>('bill')
+  const [view, setView] = useState<ResultView>(() => pageFromUrl().view ?? 'bill')
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -199,26 +220,26 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
-  // Mode → URL. The first write replaces the entry (the page's own address gains ?mode=),
-  // later ones add an entry so Back returns to the previous mode. A change that came from
-  // Back/Forward already matches the URL, so it writes nothing.
+  // Page → URL. The first write replaces the entry (the page's own address gains ?mode= and
+  // ?view=), later ones add an entry so Back returns to the previous page. A change that
+  // came from Back/Forward already matches the URL, so it writes nothing.
   const urlSynced = useRef(false)
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('mode') === modeParam(compare)) {
-      urlSynced.current = true
-      return
+    const page = { compare, view }
+    if (!urlMatches(page)) {
+      if (urlSynced.current) window.history.pushState(null, '', urlFor(page))
+      else window.history.replaceState(null, '', urlFor(page))
     }
-    if (urlSynced.current) window.history.pushState(null, '', urlWithMode(compare))
-    else window.history.replaceState(null, '', urlWithMode(compare))
     urlSynced.current = true
-  }, [compare])
+  }, [compare, view])
 
-  // URL → mode, when Back/Forward moves between entries.
+  // URL → page, when Back/Forward moves between entries.
   useEffect(() => {
     const onPop = () => {
-      const fromUrl = modeFromUrl()
-      if (fromUrl === null || fromUrl === compare) return
-      if (fromUrl) startCompare()
+      const fromUrl = pageFromUrl()
+      setView(fromUrl.view ?? 'bill')
+      if (fromUrl.compare === null || fromUrl.compare === compare) return
+      if (fromUrl.compare) startCompare()
       else stopCompare()
     }
     window.addEventListener('popstate', onPop)
@@ -406,7 +427,10 @@ export default function App() {
           <span aria-hidden="true">☰</span>
         </button>
         <span className="topbar-brand">Fouth · คำนวณค่าไฟบ้าน</span>
-        <span className="topbar-mode">{compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}</span>
+        <span className="topbar-mode">
+          {compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}
+          {view === 'tiers' && ' · ขั้นบันได'}
+        </span>
       </header>
 
       {narrow && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />}
@@ -425,12 +449,12 @@ export default function App() {
                 {/* A real link, so it can be copied or opened in a new tab; a plain click stays in the page. */}
                 <a
                   ref={i === 0 ? firstNavItem : undefined}
-                  href={urlWithMode(m.compare)}
+                  href={urlFor({ compare: m.compare, view })}
                   className={compare === m.compare ? 'nav-item on' : 'nav-item'}
                   aria-current={compare === m.compare ? 'page' : undefined}
                   title={m.title}
                   onClick={(e) => {
-                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                    if (!isPlainClick(e)) return
                     e.preventDefault()
                     chooseMode(m.compare)
                   }}
@@ -448,16 +472,41 @@ export default function App() {
             ))}
           </ul>
 
+          <p className="nav-label">หน้า</p>
+          <ul className="nav-list">
+            {RESULT_VIEWS.map((v) => (
+              <li key={v.id}>
+                <a
+                  href={urlFor({ compare, view: v.id })}
+                  className={view === v.id ? 'nav-item on' : 'nav-item'}
+                  aria-current={view === v.id ? 'page' : undefined}
+                  title={v.title}
+                  onClick={(e) => {
+                    if (!isPlainClick(e)) return
+                    e.preventDefault()
+                    goTo('result', v.id)
+                  }}
+                >
+                  <span className="nav-icon" aria-hidden="true">
+                    {v.id === 'bill' ? '🧾' : '📶'}
+                  </span>
+                  <span className="nav-text">
+                    <span className="nav-title">{v.title}</span>
+                    <span className="nav-detail">{v.id === 'bill' ? 'สลิปค่าไฟ' : 'ตารางคิดค่าไฟทีละขั้น'}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+
           <p className="nav-label">ไปที่</p>
           <ul className="nav-list">
             {[
               { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
-              { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
-              { id: 'tiers', icon: '📶', title: 'ขั้นบันได' },
               { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
             ].map((link) => (
               <li key={link.id}>
-                <button className="nav-item" title={link.title} onClick={() => (link.id === 'tiers' ? goTo('result', 'tiers') : goTo(link.id))}>
+                <button className="nav-item" title={link.title} onClick={() => goTo(link.id)}>
                   <span className="nav-icon" aria-hidden="true">
                     {link.icon}
                   </span>
