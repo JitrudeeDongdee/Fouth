@@ -58,7 +58,7 @@ on top without changing the pricing rules.
 ### Compare mode (A/B), web only
 
 The page keeps two appliance sets and prices both with the same utility, Ft and days,
-so the difference is only ever the appliances:
+so any difference between the two bills comes only from the appliances:
 
 - Set A is the list that already existed; set B is created by copying A the first time
   compare mode is turned on (a list against an empty one says nothing). `copyRows` gives
@@ -69,12 +69,11 @@ so the difference is only ever the appliances:
   one per set, each with its own total, tariff code, usage bars and bill table. The
   slip of the set being edited is marked "กำลังแก้ชุดนี้"; the other has "แก้ชุดนี้" to
   switch. Both slips share one bar scale, so equal bars mean equal kWh across bills.
-  Under the slips a summary card states the difference per month and per year, and
-  holds the "คำนวณอย่างไร" notes once rather than on each slip.
+  There is no separate summary card: the two slips are read side by side. Each slip
+  carries the "คำนวณอย่างไร" notes; only the first has `id="how"`, which the sidebar's
+  "วิธีคำนวณ" link targets.
 - Compare mode widens the result column (`1fr / 1.3fr`); the printer is a CSS container
   and puts the slips side by side only from 560 px of its own width, stacked below that.
-- The difference is computed in whole satang (`Math.round(baht * 100)`), not by
-  subtracting two floats, so it cannot read 178.86999999999998.
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
@@ -106,13 +105,17 @@ a status light, a slot, and the paper below it.
 - The torn bottom edge is a two-layer CSS mask (a conic-gradient tile repeated along the
   bottom). A mask clips a `box-shadow` away, so the paper's shade is a `filter:
   drop-shadow` instead.
-- A change reprints the slip, but only `PRINT_DELAY_MS` (600 ms) after the last edit, so
-  typing a number does not reprint per keystroke. The figures themselves update live
+- A change reprints a slip, but only `PRINT_DELAY_MS` (600 ms) after the last edit, so
+  typing a number does not reprint per keystroke. Only the slip whose contents changed
+  is reprinted: each set's contents are its rows plus utility, Ft and days, compared
+  against what was last printed. Editing set A reprints only A's slip, editing B only
+  B's, and changing a shared setting reprints both. Each slip keeps its own "พิมพ์เมื่อ"
+  time. The figures themselves update live
   while typing; it is the paper that waits. The status light blinks during the wait.
 - The feed uses `steps(16)` rather than a smooth curve, because paper leaves a printer a
   notch at a time, and `.paper-feed` clips it so it appears from the slot.
 - The animation is restarted by removing the class, forcing a reflow and re-adding it,
-  on every `.receipt` in the printer. Remounting with a `key` would also work but would
+  on the `.receipt[data-set=…]` of each changed set. Remounting with a `key` would also work but would
   close the notes section on every print. A mode change does remount (the slip count
   changes), and the reprint for that change is skipped so new slips feed only once.
   Switching which set is edited does not reprint: it is not on the paper.

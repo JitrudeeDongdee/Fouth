@@ -94,14 +94,6 @@ function save(state: Saved) {
 
 const baht = (text: string) => Number(text).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-/**
- * Money as whole satang. Two-decimal amounts of this size survive the multiply
- * exactly once rounded, so subtracting the two sets cannot leave 178.86999999999998.
- */
-const satang = (text: string) => Math.round(Number(text) * 100)
-
-const fromSatang = (amount: number) => (amount / 100).toFixed(2)
-
 export default function App() {
   const saved = useMemo(() => {
     const state = load()
@@ -140,9 +132,6 @@ export default function App() {
   )
   const result = shown === 'b' && resultB ? resultB : resultA
 
-  // Both sets are priced the same way, so the difference is the whole point of the mode.
-  const difference =
-    resultB && !resultA.error && !resultB.error ? satang(resultB.total) - satang(resultA.total) : null
 
   const startCompare = () => {
     // Start B from a copy of A: a side-by-side of a list against an empty one says nothing.
@@ -228,44 +217,55 @@ export default function App() {
   // Rows and result lines come back in the same order, so a row's kWh is at its own index.
   const kwhOf = (index: number) => (result.error ? null : result.appliances[index]?.kwhPerMonth)
 
-  // The slip is reprinted when anything it shows changes, but only once the edits stop.
+  // Each slip is reprinted when what it shows changes, but only once the edits stop.
+  // Editing set A reprints only A's slip; the shared settings are on both, so they reprint both.
+  // Which set is being edited is not on the paper, so switching tabs reprints nothing.
   const feed = useRef<HTMLDivElement>(null)
-  const firstPrint = useRef(true)
-  const printedMode = useRef(compare)
+  const printedMode = useRef<boolean | null>(null)
+  const printedContents = useRef<Record<SetId, string>>({ a: '', b: '' })
   const [printing, setPrinting] = useState(false)
-  const [printedAt, setPrintedAt] = useState(() => new Date())
-  // Which set is being edited is not on the paper, so switching tabs does not reprint.
-  const slipContents = JSON.stringify([rowsA, compare ? rowsB : null, utility, ft, days])
+  const [printedAt, setPrintedAt] = useState<Record<SetId, Date>>(() => ({ a: new Date(), b: new Date() }))
+  const contents: Record<SetId, string> = {
+    a: JSON.stringify([rowsA, utility, ft, days]),
+    b: JSON.stringify([rowsB, utility, ft, days]),
+  }
 
   useEffect(() => {
-    // The first slip is already printed by the class the markup ships with, and so is
-    // every slip a mode change mounts — reprinting those too would feed them twice.
-    if (firstPrint.current || printedMode.current !== compare) {
-      firstPrint.current = false
+    // The slips on screen at first load, and every slip a mode change mounts, are already
+    // printed by the class the markup ships with — reprinting those would feed them twice.
+    if (printedMode.current !== compare) {
       printedMode.current = compare
-      setPrintedAt(new Date())
+      printedContents.current = { ...contents }
+      setPrintedAt({ a: new Date(), b: new Date() })
       return
     }
+    const changed = (compare ? SET_IDS : (['a'] as SetId[])).filter((id) => contents[id] !== printedContents.current[id])
+    if (changed.length === 0) return
     setPrinting(true)
     const timer = setTimeout(() => {
       setPrinting(false)
-      setPrintedAt(new Date())
-      // Restarting a CSS animation needs the class gone and the layout recomputed
-      // before it goes back on; remounting instead would close the notes section.
-      feed.current?.querySelectorAll<HTMLElement>('.receipt').forEach((sheet) => {
+      const now = new Date()
+      setPrintedAt((at) => ({ ...at, ...Object.fromEntries(changed.map((id) => [id, now])) }))
+      for (const id of changed) {
+        printedContents.current[id] = contents[id]
+        const sheet = feed.current?.querySelector<HTMLElement>(`.receipt[data-set="${id}"]`)
+        if (!sheet) continue
+        // Restarting a CSS animation needs the class gone and the layout recomputed
+        // before it goes back on; remounting instead would close the notes section.
         sheet.classList.remove('feeding')
         void sheet.offsetWidth
         sheet.classList.add('feeding')
-      })
+      }
     }, PRINT_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [slipContents, compare])
+    // `contents` is rebuilt every render; its two strings are the real dependencies.
+  }, [contents.a, contents.b, compare])
 
-  const stamp = printedAt.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+  const stampOf = (id: SetId) => printedAt[id].toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
 
-  // Printed once: on the single slip, or under the two slips in compare mode.
-  const notes = (
-    <details className="notes" id="how">
+  // Each slip carries the notes; only the first has the id the sidebar's "วิธีคำนวณ" link targets.
+  const notes = (withId: boolean) => (
+    <details className="notes" id={withId ? 'how' : undefined}>
       <summary>คำนวณอย่างไร</summary>
       <ul>
         <li>เครื่องทั่วไป: วัตต์ × ชั่วโมงต่อวัน ÷ 1,000 × จำนวนวัน</li>
@@ -548,39 +548,23 @@ export default function App() {
                   <div className="printer-slot" aria-hidden="true" />
                   <div className="paper-feed" aria-live="polite">
                     <Slip
+                      set={id}
                       result={id === 'a' ? resultA : (resultB ?? resultA)}
                       setLabel={compare ? SET_LABEL[id] : null}
                       editing={compare && shown === id}
                       onEdit={() => setEditing(id)}
                       meta={`${chosenUtility.short} · ${days} วัน · Ft ${ft}`}
-                      stamp={stamp}
+                      stamp={stampOf(id)}
                       utilityShort={chosenUtility.short}
                       maxKwh={maxKwh}
                     >
-                      {!compare && notes}
+                      {notes(id === 'a')}
                     </Slip>
                   </div>
                 </div>
               ))}
             </div>
 
-            {compare && (
-              <div className="compare-summary panel" aria-live="polite">
-                <h3>ผลเทียบ</h3>
-                {difference === null ? (
-                  <p className="muted">ยังเทียบไม่ได้ เพราะข้อมูลชุดใดชุดหนึ่งไม่ถูกต้อง</p>
-                ) : (
-                  <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
-                    {difference === 0
-                      ? 'สองชุดค่าไฟเท่ากัน'
-                      : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
-                          fromSatang(Math.abs(difference) * 12),
-                        )} ต่อปี`}
-                  </p>
-                )}
-                {notes}
-              </div>
-            )}
           </section>
         </main>
 
@@ -592,6 +576,7 @@ export default function App() {
 
 /** One printed bill. Compare mode prints two of these, one per set. */
 function Slip(props: {
+  set: SetId
   result: Estimate
   setLabel: string | null
   editing: boolean
@@ -604,7 +589,7 @@ function Slip(props: {
 }) {
   const { result, setLabel } = props
   return (
-    <div className={props.editing ? 'receipt feeding editing' : 'receipt feeding'}>
+    <div className={props.editing ? 'receipt feeding editing' : 'receipt feeding'} data-set={props.set}>
       {setLabel && (
         <div className="receipt-set">
           <span className="set-stamp">{setLabel}</span>

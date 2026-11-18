@@ -466,21 +466,6 @@ input {
   margin-left: auto;
 }
 
-.diff {
-  margin: 8px 0 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.diff.saving {
-  color: var(--bar);
-}
-
-.diff.more {
-  color: var(--error);
-}
-
 .bars {
   list-style: none;
   margin: 0;
@@ -807,19 +792,6 @@ input {
 
 .slips.two .total-baht {
   font-size: clamp(1.6rem, 5vw, 2.2rem);
-}
-
-.compare-summary {
-  margin-top: 4px;
-}
-
-.compare-summary h3 {
-  margin-top: 0;
-}
-
-.compare-summary .diff {
-  margin: 0 0 8px;
-  font-size: 1rem;
 }
 
 /* Little paper slips drawn in CSS: one for a single bill, two for compare. */
