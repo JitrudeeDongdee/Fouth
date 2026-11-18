@@ -1696,3 +1696,30 @@ input {
 .model-cat {
   color: var(--muted);
 }
+
+/* A card the bill could not price: marked, and left out of the total. */
+.row-invalid {
+  border-color: var(--error);
+}
+
+.summary-skip {
+  flex: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--error);
+}
+
+.row-problem {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--error);
+}
+
+.slip-skipped {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--error);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: var(--error);
+}
