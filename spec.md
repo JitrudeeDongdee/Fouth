@@ -131,10 +131,11 @@ so any difference between the two bills comes only from the appliances:
   - "ขั้นบันได": the tier staircase, titled "ใช้ไฟถึงขั้นไหน", with one line naming
     the tier the last unit landed in and its price. The amounts per tier stay in the
     bill table below.
-- One choice applies to every slip, so two slips in compare mode always draw the same
-  thing. It is a per-viewer display preference in `localStorage`
-  (`fouth-slip-usage-view`), not bill data and not in the URL. Toggling does not reprint
-  the slip.
+- Each slip has its own choice, so in compare mode set A can show the staircase while
+  set B shows the bars. It is a per-viewer display preference in `localStorage`
+  (`fouth-slip-usage-view`, saved as `{"a": …, "b": …}`), not bill data and not in the
+  URL. A value saved before this was per slip (a bare `"tiers"` / `"appliances"`)
+  applies to both. Toggling does not reprint the slip.
 - The staircase is the same `Stairs` component the learn page uses, and has a link to it.
 
 ### Tier panel (learn page only)
@@ -408,6 +409,10 @@ divergence fails loudly instead of passing silently.
   - Inside พัดลม, picking Hatari titles it "พัดลม · Hatari" with 6 models, and "18" then
     leaves P18R1.
   - Empty results show a message, and back clears the title and the search.
+  Per-slip toggle (PR #7 is merged and live at 511f577; this is a new branch,
+  `feature/slip-toggle-per-set`): 25 web tests pass and the build succeeds. In compare
+  mode, switching B to ขั้นบันได leaves A on bars and the reverse; the stored value is
+  `{"a":"tiers","b":"appliances"}`; the old `"tiers"` value loads as both.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -425,5 +430,6 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-PR #5 (printed slip) is merged. A human reviews and merges PR #6 (two slips + sidebar)
-into `develop`; the merge deploys to GitHub Pages.
+PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. Next, a
+human reviews and merges the per-slip toggle PR (`feature/slip-toggle-per-set` →
+`develop`), and the merge deploys it.

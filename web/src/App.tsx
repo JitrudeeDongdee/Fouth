@@ -116,11 +116,22 @@ const USAGE_VIEWS: { id: UsageView; title: string }[] = [
 
 const USAGE_VIEW_KEY = 'fouth-slip-usage-view'
 
-function loadUsageView(): UsageView {
+const isUsageView = (value: unknown): value is UsageView => value === 'appliances' || value === 'tiers'
+
+/**
+ * Each slip's choice, kept as `{"a": …, "b": …}`. A value saved before the choice was per
+ * slip is a bare "tiers" / "appliances" string; it applies to both slips.
+ */
+function loadUsageViews(): Record<SetId, UsageView> {
+  const fallback: Record<SetId, UsageView> = { a: 'appliances', b: 'appliances' }
   try {
-    return localStorage.getItem(USAGE_VIEW_KEY) === 'tiers' ? 'tiers' : 'appliances'
+    const raw = localStorage.getItem(USAGE_VIEW_KEY)
+    if (raw === null) return fallback
+    if (isUsageView(raw)) return { a: raw, b: raw }
+    const saved = JSON.parse(raw) as Partial<Record<SetId, unknown>>
+    return { a: isUsageView(saved.a) ? saved.a : 'appliances', b: isUsageView(saved.b) ? saved.b : 'appliances' }
   } catch {
-    return 'appliances'
+    return fallback
   }
 }
 
@@ -200,17 +211,17 @@ export default function App() {
   const [rowsB, setRowsB] = useState<Row[]>(initial.b)
   const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
-  // The result area shows either the printed bill or how the progressive rate was applied.
+  // The learn page (?page=learn) is shown in place of the calculator.
   const [learn, setLearn] = useState(() => pageFromUrl().learn)
-  // One choice for every slip, so two slips in compare mode always draw the same thing.
-  const [usageView, setUsageView] = useState<UsageView>(loadUsageView)
+  // Each slip has its own bars/staircase choice, so set A can show one while B shows the other.
+  const [usageViews, setUsageViews] = useState<Record<SetId, UsageView>>(loadUsageViews)
   useEffect(() => {
     try {
-      localStorage.setItem(USAGE_VIEW_KEY, usageView)
+      localStorage.setItem(USAGE_VIEW_KEY, JSON.stringify(usageViews))
     } catch {
       // Storage can be unavailable; the slips then start with the appliance bars.
     }
-  }, [usageView])
+  }, [usageViews])
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -769,8 +780,8 @@ export default function App() {
                       stamp={stampOf(id)}
                       utilityShort={chosenUtility.short}
                       maxKwh={maxKwh}
-                      usageView={usageView}
-                      onUsageView={setUsageView}
+                      usageView={usageViews[id]}
+                      onUsageView={(view) => setUsageViews((all) => ({ ...all, [id]: view }))}
                       learnHref={urlFor({ compare, learn: true })}
                       onLearn={() => openLearn(true)}
                     >
