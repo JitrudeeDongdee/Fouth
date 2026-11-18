@@ -1640,3 +1640,59 @@ input {
 .row-icon {
   color: var(--bar);
 }
+
+/* Picker search: one box on both steps. */
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.picker-search:focus-within {
+  border-color: var(--accent);
+}
+
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 9px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+}
+
+/* The browser's own clear button would sit next to ours. */
+.picker-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.picker-empty {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.model-icon {
+  color: var(--bar);
+}
+
+.model-cat {
+  color: var(--muted);
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { brandsOf, CATEGORIES, categoryOf, genericPreset, presetFromModel, type Category } from './catalog'
+import { brandsOf, CATEGORIES, categoryOf, genericPreset, matchesQuery, presetFromModel, searchModels, type Category } from './catalog'
 import { defaultRows } from './appliances'
 
 describe('appliance catalog', () => {
@@ -59,5 +59,22 @@ describe('appliance catalog', () => {
     expect(categoryOf(row('rated', 'ไดร์เป่าผม'))).toBe('other')
     // A stored category wins over the name.
     expect(categoryOf({ ...row('rated', 'ไดร์เป่าผม'), category: 'fan' })).toBe('fan')
+  })
+
+  it('matches every word of a search, in any order and case', () => {
+    expect(matchesQuery('Daikin FTKQ12XV2S MAX INVERTER', 'daikin ftkq12')).toBe(true)
+    expect(matchesQuery('Daikin FTKQ12XV2S', 'ftkq12 daikin')).toBe(true)
+    expect(matchesQuery('Daikin FTKQ12XV2S', 'daikin 18')).toBe(false)
+    expect(matchesQuery('พัดลมตั้งพื้น 16 นิ้ว', '๑๖ นิ้ว')).toBe(true)
+    expect(matchesQuery('anything', '   ')).toBe(true)
+  })
+
+  it('searches every category at once, and finds nothing for an empty query', () => {
+    expect(searchModels('')).toEqual([])
+    const daikin = searchModels('daikin')
+    expect(daikin.length).toBeGreaterThan(0)
+    expect(daikin.every(({ model }) => model.brand === 'Daikin')).toBe(true)
+    // A category name finds that category's models.
+    expect(searchModels('ตู้เย็น').every(({ category }) => category.id === 'fridge')).toBe(true)
   })
 })

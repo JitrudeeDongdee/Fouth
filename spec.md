@@ -173,8 +173,19 @@ so any difference between the two bills comes only from the appliances:
      - Then brand chips to narrow the list, and the brand models. Each model shows its
        description, the spec it adds, and a "ที่มา" link to the manufacturer page
        (opens in a new tab).
+- A search box sits on both steps (`matchesQuery`, `searchModels` in `catalog.ts`). It
+  matches every word of the query, in any order and case, against category, brand, model
+  code, description and spec figures; Thai digits count as Arabic ones.
+  - On step 1 a search covers every category at once and replaces the grid with the
+    results: matching categories' "ทั่วไป" defaults first, then models tagged with
+    their category and icon.
+  - On step 2 it narrows the list together with the brand chip.
+  - An empty result says so and points back to the generic default.
+- The title follows the choice: the category name, then "<category> · <brand>" once a
+  brand chip is picked (e.g. "พัดลม · Hatari"). The search placeholder follows it too.
+  The generic defaults hide while a brand is picked.
 - Picking adds one card named "<category> <brand> <model>", closes the dialog, and
-  scrolls the card into view. Reopening starts at the categories.
+  scrolls the card into view. Reopening starts at the categories. Back or closing clears the search and the brand.
 - On a phone the dialog is a bottom sheet with two category columns.
 - Every card in the list shows its category's line icon, both collapsed and expanded.
   `Row.category` is stored when a card is added from the picker. Cards without it (the
@@ -391,6 +402,12 @@ divergence fails loudly instead of passing silently.
   375 px it is a bottom sheet whose list scrolls, with no overflow.
   Card icons: 23 web tests (2 new for `categoryOf`). In the browser all 7 cards on the
   page show an icon, including cards saved before categories existed.
+  Picker search: 25 web tests (2 new). In the browser:
+  - "16 นิ้ว" across categories finds 8 fans; "daikin 12" finds 2 Daikin units; "พัดลม"
+    shows the fan default and 12 fans.
+  - Inside พัดลม, picking Hatari titles it "พัดลม · Hatari" with 6 models, and "18" then
+    leaves P18R1.
+  - Empty results show a message, and back clears the title and the search.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

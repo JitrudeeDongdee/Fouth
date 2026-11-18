@@ -103,3 +103,31 @@ export const iconOf = (row: Pick<Preset, 'kind' | 'name' | 'category'>): IconNam
 
 /** The brands in a category, in the order they first appear. */
 export const brandsOf = (category: Category) => [...new Set(category.models.map((m) => m.brand))]
+
+/** Lower-case, no surrounding space, Thai digits as Arabic: the form both sides are matched in. */
+const normalise = (text: string) =>
+  text.toLowerCase().replace(/[๐-๙]/g, (d) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d))).trim()
+
+/**
+ * Whether every word of [query] appears somewhere in [haystack], case-insensitively and
+ * in any order, so "daikin 12" finds "Daikin FTKQ12XV2S". An empty query matches all.
+ */
+export function matchesQuery(haystack: string, query: string): boolean {
+  const text = normalise(haystack)
+  return normalise(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => text.includes(word))
+}
+
+/** The words a model can be found by: its category, brand, model code and description. */
+export const searchText = (category: Category, model: CatalogModel) =>
+  [category.name, model.brand, model.model, model.description, ...Object.values(model.spec)].join(' ')
+
+/** Every model, in any category, that matches [query]; in catalog order. */
+export function searchModels(query: string): { category: Category; model: CatalogModel }[] {
+  if (query.trim() === '') return []
+  return CATEGORIES.flatMap((category) =>
+    category.models.filter((model) => matchesQuery(searchText(category, model), query)).map((model) => ({ category, model })),
+  )
+}
