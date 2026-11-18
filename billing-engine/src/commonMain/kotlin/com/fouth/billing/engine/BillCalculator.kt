@@ -11,6 +11,21 @@ data class EnergyLine(
     val amount: BigDecimal get() = kwh * pricePerKwh
 }
 
+/**
+ * How much of one month's usage falls in one tier of a progressive tariff. Every tier of
+ * the tariff gets one, in order; a tier the usage does not reach has [kwh] zero.
+ * [toKwh] is null for the open-ended last tier.
+ */
+data class TierUse(
+    val fromKwh: BigDecimal,
+    val toKwh: BigDecimal?,
+    val pricePerKwh: BigDecimal,
+    val kwh: BigDecimal,
+) {
+    val amount: BigDecimal get() = kwh * pricePerKwh
+    val label: String get() = if (toKwh == null) "${fromKwh.toStringExpanded()}+" else "${fromKwh.toStringExpanded()}-${toKwh.toStringExpanded()}"
+}
+
 data class BillBreakdown(
     val rates: ResolvedRates,
     val totalKwh: BigDecimal,
@@ -59,21 +74,29 @@ object BillCalculator {
             "tariff ${tariff.code} needs ${U::class.simpleName} usage, got ${usage::class.simpleName}",
         )
 
-    private fun tieredLines(tariff: TieredTariff, kwh: BigDecimal): List<EnergyLine> {
-        val lines = mutableListOf<EnergyLine>()
+    /**
+     * Splits [kwh] across every tier of [tariff], filling each from the bottom before the
+     * next. The bill's energy lines are the tiers this returns with some usage in them,
+     * so the two can never disagree.
+     */
+    fun tierUses(tariff: TieredTariff, kwh: BigDecimal): List<TierUse> {
+        require(kwh.signum() >= 0) { "usage must not be negative" }
         var lowerBound = BigDecimal.ZERO
         var remaining = kwh
-        for (tier in tariff.tiers) {
-            if (remaining.signum() == 0) break
+        return tariff.tiers.map { tier ->
             val cap = tier.upToKwh
             val inTier = if (cap == null) remaining else minOf(remaining, cap - lowerBound)
-            val label = if (cap == null) "${lowerBound.toStringExpanded()}+" else "${lowerBound.toStringExpanded()}-${cap.toStringExpanded()}"
-            lines += EnergyLine(label, inTier, tier.pricePerKwh)
+            val use = TierUse(lowerBound, cap, tier.pricePerKwh, inTier)
             remaining -= inTier
             if (cap != null) lowerBound = cap
+            use
         }
-        return lines
     }
+
+    private fun tieredLines(tariff: TieredTariff, kwh: BigDecimal): List<EnergyLine> =
+        tierUses(tariff, kwh)
+            .filter { it.kwh.signum() > 0 }
+            .map { EnergyLine(it.label, it.kwh, it.pricePerKwh) }
 
     private fun touLines(tariff: TouTariff, usage: Usage.TimeOfUse): List<EnergyLine> = listOf(
         EnergyLine("peak", usage.peakKwh, tariff.peakPerKwh),

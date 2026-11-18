@@ -11,7 +11,7 @@ import {
   type Preset,
   type Row,
 } from './appliances'
-import { estimate, tariffCodes } from './estimate'
+import { estimate, smallHouseholdLimitKwh, tariffCodes } from './estimate'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
 // Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
@@ -73,6 +73,14 @@ function urlWithMode(compare: boolean): string {
 /** What a preset will add, in the same words a collapsed row uses. A blank preset is filled in by hand. */
 const presetSummary = (preset: Preset) =>
   preset.kind === 'rated' && preset.watts.trim() === '' ? 'กรอกสเปคเอง' : specSummary({ ...preset, id: 0, collapsed: false })
+
+/** What the result area shows: the printed bill, or the progressive rate step by step. */
+type ResultView = 'bill' | 'tiers'
+
+const RESULT_VIEWS: { id: ResultView; title: string }[] = [
+  { id: 'bill', title: 'บิล' },
+  { id: 'tiers', title: 'ขั้นบันได' },
+]
 
 /** Below this width the layout is one column and the sidebar slides over the page. */
 const NARROW = '(max-width: 860px)'
@@ -150,6 +158,8 @@ export default function App() {
   const [rowsB, setRowsB] = useState<Row[]>(initial.b)
   const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
+  // The result area shows either the printed bill or how the progressive rate was applied.
+  const [view, setView] = useState<ResultView>('bill')
   const [ft, setFt] = useState(saved?.ft ?? DEFAULT_FT)
   const [days, setDays] = useState(saved?.days ?? '30')
   // Saved state from before the utility picker existed has no utility field.
@@ -267,8 +277,20 @@ export default function App() {
     afterNav()
   }
 
-  const goTo = (id: string) => {
+  const goTo = (id: string, wantView?: ResultView) => {
     afterNav()
+    // The notes live on the slips, so reaching them means showing the bill first.
+    const needView = wantView ?? (id === 'how' ? 'bill' : undefined)
+    if (needView && needView !== view) {
+      setView(needView)
+      // Let React render the other view before looking for the target in it.
+      window.setTimeout(() => goToNow(id), 0)
+      return
+    }
+    goToNow(id)
+  }
+
+  const goToNow = (id: string) => {
     const target = document.getElementById(id)
     if (target instanceof HTMLDetailsElement) target.open = true
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -431,10 +453,11 @@ export default function App() {
             {[
               { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
               { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
+              { id: 'tiers', icon: '📶', title: 'ขั้นบันได' },
               { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
             ].map((link) => (
               <li key={link.id}>
-                <button className="nav-item" title={link.title} onClick={() => goTo(link.id)}>
+                <button className="nav-item" title={link.title} onClick={() => (link.id === 'tiers' ? goTo('result', 'tiers') : goTo(link.id))}>
                   <span className="nav-icon" aria-hidden="true">
                     {link.icon}
                   </span>
@@ -659,6 +682,38 @@ export default function App() {
             <h2 id="result-title" className="visually-hidden">
               ค่าไฟโดยประมาณต่อเดือน
             </h2>
+            <div className="tabs result-tabs" role="tablist" aria-label="มุมมองผลลัพธ์">
+              {RESULT_VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  role="tab"
+                  id={`view-${v.id}`}
+                  aria-selected={view === v.id}
+                  aria-controls="result-panel"
+                  className={view === v.id ? 'tab on' : 'tab'}
+                  onClick={() => setView(v.id)}
+                >
+                  {v.title}
+                </button>
+              ))}
+            </div>
+
+            <div id="result-panel" role="tabpanel" aria-labelledby={`view-${view}`}>
+            {view === 'tiers' ? (
+              <div className={compare ? 'tier-panels two' : 'tier-panels'}>
+                {(compare ? SET_IDS : (['a'] as SetId[])).map((id) => (
+                  <TierPanel
+                    key={id}
+                    result={id === 'a' ? resultA : (resultB ?? resultA)}
+                    setLabel={compare ? SET_LABEL[id] : null}
+                    utilityShort={chosenUtility.short}
+                    smallCode={tariffCodes[utility].small}
+                    largeCode={tariffCodes[utility].large}
+                  />
+                ))}
+              </div>
+            ) : (
+            <>
             <div className="printer-head" aria-hidden="true">
               <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
               <span className={printing ? 'printer-led busy' : 'printer-led'} />
@@ -687,7 +742,9 @@ export default function App() {
                 </div>
               ))}
             </div>
-
+            </>
+            )}
+            </div>
           </section>
         </main>
 
@@ -810,6 +867,135 @@ function Slip(props: {
         <div className="barcode" />
         <span>* ประมาณการ ไม่ใช่บิลจริง *</span>
       </div>
+    </div>
+  )
+}
+
+/** kWh per month up to which the estimate uses the small-household rate (the engine's limit). */
+const SMALL_HOUSEHOLD_LIMIT = Number(smallHouseholdLimitKwh())
+
+const price = (text: string) => Number(text).toFixed(4)
+
+/**
+ * How the progressive rate priced one bill: every tier of the tariff as a step, the part
+ * of each step the usage filled, and the sum each step contributes. Steps the usage does
+ * not reach are shown greyed, so it is clear what the next unit would cost.
+ */
+function TierPanel(props: {
+  result: Estimate
+  setLabel: string | null
+  utilityShort: string
+  smallCode: string
+  largeCode: string
+}) {
+  const { result } = props
+  if (result.error) {
+    return (
+      <div className="tier-panel panel">
+        {props.setLabel && <span className="set-stamp plain">{props.setLabel}</span>}
+        <p className="error">ข้อมูลไม่ถูกต้อง: {result.error}</p>
+      </div>
+    )
+  }
+
+  const tiers = result.tiers
+  const total = Number(result.totalKwh)
+  const prices = tiers.map((t) => Number(t.pricePerKwh))
+  const low = Math.min(...prices)
+  const high = Math.max(...prices)
+  // The step the last unit landed in; nothing used means the first.
+  const current = tiers.reduce((last, t, i) => (Number(t.kwh) > 0 ? i : last), 0)
+  const next = tiers[current + 1]
+  const toNext = next ? Number(tiers[current].toKwh) - total : null
+  const small = result.tariffCode === props.smallCode
+  const fill = (t: (typeof tiers)[number]) =>
+    t.toKwh === '' ? (Number(t.kwh) > 0 ? 1 : 0) : Number(t.kwh) / (Number(t.toKwh) - Number(t.fromKwh))
+  const range = (t: (typeof tiers)[number]) => (t.toKwh === '' ? `${t.fromKwh} ขึ้นไป` : `${t.fromKwh}–${t.toKwh}`)
+
+  return (
+    <div className="tier-panel panel">
+      <div className="tier-head">
+        {props.setLabel && <span className="set-stamp plain">{props.setLabel}</span>}
+        <span>
+          <strong>{baht(result.totalKwh)} หน่วย</strong> · {props.utilityShort} อัตรา {result.tariffCode}
+        </span>
+      </div>
+
+      <p className="tier-why">
+        {small
+          ? `ใช้ไม่เกิน ${SMALL_HOUSEHOLD_LIMIT} หน่วย จึงคิดอัตรา ${props.smallCode} (บ้านใช้ไฟน้อย ขั้นแรกแบ่งละเอียดกว่า)`
+          : `ใช้เกิน ${SMALL_HOUSEHOLD_LIMIT} หน่วย จึงคิดอัตรา ${props.largeCode} (ขั้นแรกกว้างกว่า ค่าบริการสูงกว่า)`}
+      </p>
+
+      <div className="stairs" style={{ gridTemplateColumns: `repeat(${tiers.length}, minmax(0, 1fr))` }} aria-hidden="true">
+        {tiers.map((t, i) => {
+          const rise = high === low ? 1 : (Number(t.pricePerKwh) - low) / (high - low)
+          return (
+            <div className={i === current ? 'step now' : 'step'} key={t.fromKwh}>
+              <span className="step-price">฿{price(t.pricePerKwh)}</span>
+              <div className="step-block" style={{ height: `${35 + rise * 65}%` }}>
+                <div className="step-fill" style={{ width: `${Math.min(1, fill(t)) * 100}%` }} />
+              </div>
+              <span className="step-range">{range(t)}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      <table className="tier-table">
+        <thead>
+          <tr>
+            <th>ขั้น</th>
+            <th>หน่วยที่</th>
+            <th>คิดเป็น</th>
+            <th className="num">บาท</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tiers.map((t, i) => {
+            const used = Number(t.kwh) > 0
+            return (
+              <tr key={t.fromKwh} className={used ? (i === current ? 'now' : '') : 'unused'}>
+                <td>{i + 1}</td>
+                <td>{range(t)}</td>
+                <td>
+                  {used ? (
+                    <>
+                      {baht(t.kwh)} × {price(t.pricePerKwh)}
+                    </>
+                  ) : (
+                    <span className="small">ยังไม่ถึง · ฿{price(t.pricePerKwh)}/หน่วย</span>
+                  )}
+                </td>
+                <td className="num">{used ? baht(t.amount) : '–'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={3}>ค่าพลังงานไฟฟ้า</td>
+            <td className="num">{baht(result.energyCharge)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <ul className="tier-notes">
+        {next && toNext !== null && (
+          <li>
+            อีก <strong>{baht(toNext.toFixed(2))} หน่วย</strong> จะขึ้นขั้นที่ {current + 2} ซึ่งคิดหน่วยละ ฿
+            {price(next.pricePerKwh)}
+          </li>
+        )}
+        {small && (
+          <li>
+            ถ้าใช้เกิน {SMALL_HOUSEHOLD_LIMIT} หน่วย (อีก {baht(Math.max(0, SMALL_HOUSEHOLD_LIMIT - total).toFixed(2))} หน่วย)
+            จะเปลี่ยนไปคิดอัตรา {props.largeCode} ทั้งเดือน
+          </li>
+        )}
+        <li>แต่ละขั้นคิดเฉพาะหน่วยที่อยู่ในช่วงนั้น หน่วยแรก ๆ ยังคิดราคาขั้นต้นเสมอ ไม่ได้คิดราคาขั้นสูงทั้งหมด</li>
+        <li>ยอดแต่ละขั้นปัดเป็นสตางค์เพื่อแสดงผล บิลปัดเศษครั้งเดียวที่ยอดรวมค่าพลังงาน</li>
+      </ul>
     </div>
   )
 }

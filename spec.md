@@ -54,6 +54,12 @@ on top without changing the pricing rules.
   takes and returns **strings** for every number, so no value becomes a JS float. Errors come
   back in `EstimateResult.error` instead of throwing. `utilities()` hands the page each utility's
   code and its two type codes, so the page never hard-codes them.
+- `EstimateResult.tiers: TierLine[]` — **every** tier of the tariff the bill was priced on,
+  in order, including tiers the usage does not reach. Each `TierLine` has `fromKwh`,
+  `toKwh` (`""` for the open-ended last tier), `pricePerKwh`, `kwh` used (`"0"` if not
+  reached) and `amount`. `amount` is rounded per tier for display only; the bill rounds
+  the energy total once. Built from `BillCalculator.tierUses`, so it always agrees with
+  `energyLines`. `smallHouseholdLimitKwh()` (150) is also read by the page, not repeated.
 
 ### Compare mode (A/B), web only
 
@@ -90,6 +96,26 @@ so any difference between the two bills comes only from the appliances:
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
   `fouth-estimator-v1`; set B is kept when the mode is switched off. A list saved before
   compare mode still loads, because set A kept the old `rows` key.
+
+### Tiers tab: the progressive rate step by step (web only)
+
+- Tabs above the result switch between "บิล" (the printed slips) and "ขั้นบันได". The
+  sidebar's "ไปที่ → ขั้นบันได" opens the tab and scrolls to it. "วิธีคำนวณ" switches
+  back to the bill, because the notes live on the slips. The tab is page state only,
+  not in the URL.
+- One panel per set (two side by side in compare mode, from 560 px of printer width).
+  Each panel has:
+  - Why this tariff: up to 150 units → small-household code, over → large. The limit
+    comes from the engine.
+  - A staircase: one column per tier, height by price per unit, and a fill showing how
+    much of that tier's range was used. The open-ended last tier fills when reached, and
+    the tier the last unit landed in is outlined.
+  - A table, one row per tier: range, "kWh × price", and amount. The current tier is
+    highlighted. Unreached tiers read "ยังไม่ถึง" with their price. A footer shows the
+    energy charge.
+  - Notes: units left until the next tier and its price. On the small tariff, how many
+    units until the whole month switches to the large one. Also, that each tier only
+    prices the units inside it, and that per-tier amounts are display-rounded.
 
 ### Adding an appliance (web only)
 
@@ -177,6 +203,9 @@ Pure Kotlin (common code), no Spring, no database.
   A mismatch is an error, not a silent conversion.
 - `BillCalculator.calculate(usage, rates)` → `BillBreakdown` (energy lines, energy, service,
   Ft, subtotal, VAT, total, plus the `ResolvedRates` it used).
+- `BillCalculator.tierUses(tariff, kWh)` → `TierUse(fromKwh, toKwh?, pricePerKwh, kwh)` for
+  every tier, filling each from the bottom; untouched tiers have kwh 0. The bill's energy
+  lines are exactly the tier uses with kwh > 0 (tested at the tier boundaries).
 - `TouClassifier(holidays)` — classifies a 15-minute interval by its **start** time.
 
 ### Rounding rules (decided)
@@ -244,7 +273,10 @@ divergence fails loudly instead of passing silently.
   falls back to the saved mode and keeps `x=1` and `#how`.
   Add-appliance modal checked at 1280 px (centred, 11 presets, picking พัดลม in compare
   mode added it to set A and closed the modal) and 375 px (bottom sheet, two columns,
-  scrolls).
+  scrolls). Tiers tab: engine `allTests` 38 passed on JVM and on Node.js (3 new tier
+  tests); 13 web tests; checked in the browser at 1280 px (48.66 kWh on 1.1.1: 35.23 +
+  29.88 + 70.98 = 136.09, matching the bill; tiers 4 and 5 shown unreached; compare
+  shows two panels) and 375 px (panels stacked, no overflow).
 
 ### CI/CD (`.github/workflows/ci.yml`)
 

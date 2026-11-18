@@ -131,4 +131,37 @@ class BillCalculatorTest {
         assertFailsWith<NoRateException> { rateBook.resolve("9.9.9", jan2025) }
         assertFailsWith<NoRateException> { rateBook.resolve("1.1.1", LocalDate(2024, 12, 31)) }
     }
+
+    @Test
+    fun tierUsesListsEveryTierAndFillsThemInOrder() {
+        // 1.1.2 (Jan 2023): 0-150 @3.2484, 150-400 @4.2218, 400+ @4.4217.
+        // 216.66 kWh fills the first tier (150), puts 66.66 in the second, none in the third.
+        val tariff = rateBook.resolve("1.1.2", jan2025).tariff as TieredTariff
+        val uses = BillCalculator.tierUses(tariff, bd("216.66"))
+        assertEquals(listOf("0-150", "150-400", "400+"), uses.map { it.label })
+        assertEquals(listOf(bd("150"), bd("66.66"), bd("0")), uses.map { it.kwh })
+        assertEquals(null, uses.last().toKwh)
+        // 66.66 * 4.2218 = 281.425188
+        assertEquals(bd("281.425188"), uses[1].amount)
+    }
+
+    @Test
+    fun tierUsesAgreeWithTheBillsEnergyLines() {
+        val tariff = rateBook.resolve("1.1.1", jan2025).tariff as TieredTariff
+        for (kwh in listOf("0", "15", "15.01", "100", "150", "400", "612.5")) {
+            val uses = BillCalculator.tierUses(tariff, bd(kwh)).filter { it.kwh.signum() > 0 }
+            val lines = bill("1.1.1", Usage.Total(bd(kwh))).energyLines
+            assertEquals(lines.map { it.label }, uses.map { it.label }, "labels at $kwh kWh")
+            assertEquals(lines.map { it.kwh }, uses.map { it.kwh }, "kWh at $kwh kWh")
+            assertEquals(bd(kwh), uses.fold(bd("0")) { sum, u -> sum + u.kwh }, "kWh adds up at $kwh")
+        }
+    }
+
+    @Test
+    fun zeroUsageLeavesEveryTierEmpty() {
+        val tariff = rateBook.resolve("1.1.1", jan2025).tariff as TieredTariff
+        val uses = BillCalculator.tierUses(tariff, bd("0"))
+        assertEquals(tariff.tiers.size, uses.size)
+        assertTrue(uses.all { it.kwh.signum() == 0 })
+    }
 }

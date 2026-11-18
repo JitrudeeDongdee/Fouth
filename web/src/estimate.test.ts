@@ -22,6 +22,17 @@ describe('estimate', () => {
     expect(result.appliances.map((a) => a.kwhPerMonth)).toEqual(['168.00', '30.00', '15.00'])
   })
 
+  it('lists every tier of the tariff, including those the usage does not reach', () => {
+    const result = estimate(typicalHome(), 'PEA', '0.3972', 30)
+
+    // 213 kWh on 1.1.2: 200 @ 3.0000 = 600.00, 13 @ 4.1584 = 54.0592, none in 400+.
+    expect(result.tiers.map((t) => [t.fromKwh, t.toKwh, t.pricePerKwh, t.kwh, t.amount])).toEqual([
+      ['0', '200', '3', '200', '600.00'],
+      ['200', '400', '4.1584', '13', '54.06'],
+      ['400', '', '4.3583', '0', '0.00'],
+    ])
+  })
+
   it('charges the same under MEA but names the tariff the way MEA does', () => {
     const pea = estimate(typicalHome(), 'PEA', '0.3972', 30)
     const mea = estimate(typicalHome(), 'MEA', '0.3972', 30)

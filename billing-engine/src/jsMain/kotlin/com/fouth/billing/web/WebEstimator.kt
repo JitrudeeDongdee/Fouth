@@ -2,7 +2,9 @@
 
 package com.fouth.billing.web
 
+import com.fouth.billing.engine.BillCalculator
 import com.fouth.billing.engine.Money
+import com.fouth.billing.engine.TieredTariff
 import com.fouth.billing.engine.decimal
 import com.fouth.billing.estimate.AirConditioner
 import com.fouth.billing.estimate.Appliance
@@ -42,6 +44,14 @@ class ApplianceLine(val name: String, val kwhPerMonth: String, val bahtShare: St
 @JsExport
 class BillLine(val label: String, val kwh: String, val pricePerKwh: String, val amount: String)
 
+/**
+ * One tier of the progressive tariff the estimate was priced on. Every tier is listed,
+ * including those the usage does not reach ([kwh] "0"). [toKwh] is "" for the open-ended
+ * last tier. [amount] is rounded for display; the bill rounds the energy total once.
+ */
+@JsExport
+class TierLine(val fromKwh: String, val toKwh: String, val pricePerKwh: String, val kwh: String, val amount: String)
+
 @JsExport
 class EstimateResult(
     /** Empty when the estimate succeeded; otherwise the reason the input was rejected. */
@@ -50,6 +60,8 @@ class EstimateResult(
     val totalKwh: String,
     val tariffCode: String,
     val energyLines: Array<BillLine>,
+    /** Every tier of the tariff, for showing how the progressive rate was applied. */
+    val tiers: Array<TierLine>,
     val energyCharge: String,
     val serviceCharge: String,
     val ftCharge: String,
@@ -86,6 +98,17 @@ fun estimateBill(
             energyLines = bill.energyLines.map {
                 BillLine(it.label, it.kwh.toStringExpanded(), it.pricePerKwh.toStringExpanded(), Money.format(it.amount))
             }.toTypedArray(),
+            tiers = (bill.rates.tariff as? TieredTariff)?.let { tariff ->
+                BillCalculator.tierUses(tariff, bill.totalKwh).map {
+                    TierLine(
+                        fromKwh = it.fromKwh.toStringExpanded(),
+                        toKwh = it.toKwh?.toStringExpanded() ?: "",
+                        pricePerKwh = it.pricePerKwh.toStringExpanded(),
+                        kwh = it.kwh.toStringExpanded(),
+                        amount = Money.format(it.amount),
+                    )
+                }.toTypedArray()
+            } ?: emptyArray(),
             energyCharge = Money.format(bill.energyCharge),
             serviceCharge = Money.format(bill.serviceCharge),
             ftCharge = Money.format(bill.ftCharge),
@@ -94,7 +117,7 @@ fun estimateBill(
             total = Money.format(bill.total),
         )
     } catch (e: Exception) {
-        EstimateResult(e.message ?: "invalid input", emptyArray(), "", "", emptyArray(), "", "", "", "", "", "")
+        EstimateResult(e.message ?: "invalid input", emptyArray(), "", "", emptyArray(), emptyArray(), "", "", "", "", "", "")
     }
 
 /** kWh per month at which the estimate switches from the small- to the large-household tariff. */

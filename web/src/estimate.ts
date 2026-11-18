@@ -1,4 +1,4 @@
-import { ApplianceInput, estimateBill, utilities, type EstimateResult } from 'billing-engine'
+import { ApplianceInput, estimateBill, smallHouseholdLimitKwh, utilities, type EstimateResult } from 'billing-engine'
 import type { Row } from './appliances'
 
 /** Calls the Kotlin billing engine with the form rows. */
@@ -16,3 +16,6 @@ export function estimate(rows: Row[], utility: string, ftPerKwh: string, daysPer
 export const tariffCodes: Record<string, { small: string; large: string }> = Object.fromEntries(
   utilities().map((u) => [u.code, { small: u.smallHousehold, large: u.largeHousehold }]),
 )
+
+/** kWh per month up to which the small-household rate applies, as the engine defines it. */
+export { smallHouseholdLimitKwh }

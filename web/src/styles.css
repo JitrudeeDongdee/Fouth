@@ -1166,3 +1166,154 @@ input {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Result tabs: the printed bill, or the progressive rate step by step.
+   --------------------------------------------------------------------------- */
+
+.result-tabs {
+  width: fit-content;
+  margin-bottom: 10px;
+  background: var(--panel);
+}
+
+.tier-panels {
+  display: grid;
+  gap: 12px;
+}
+
+@container (min-width: 560px) {
+  .tier-panels.two {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.tier-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tier-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.set-stamp.plain {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.tier-why {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* The staircase: one column per tier, taller where a unit costs more. */
+.stairs {
+  display: grid;
+  gap: 4px;
+  height: 150px;
+  align-items: end;
+}
+
+.step {
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px;
+  text-align: center;
+}
+
+.step-price {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-block {
+  align-self: end;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--line);
+}
+
+/* The part of the step the usage filled, from its lower bound to the right. */
+.step-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--bar);
+}
+
+.step.now .step-block {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.step-range {
+  font-size: 0.68rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tier-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tier-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tier-table .num {
+  text-align: right;
+}
+
+.tier-table tr.now td {
+  background: var(--accent-soft);
+}
+
+.tier-table tr.unused td {
+  color: var(--muted);
+}
+
+.tier-table tfoot td {
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.tier-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
+.tier-notes strong {
+  color: var(--ink);
+}
