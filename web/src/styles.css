@@ -1715,11 +1715,12 @@ input {
   color: var(--error);
 }
 
-.slip-skipped {
-  margin: 8px 0 0;
-  padding: 6px 8px;
-  border: 1px dashed var(--error);
-  border-radius: 4px;
-  font-size: 0.78rem;
+/* A card left out of the bill keeps its place on the slip: red name, no figures, no bar. */
+.bar-skipped .bar-label span,
+.stairs-skipped {
   color: var(--error);
+}
+
+.stairs-skipped {
+  margin: 0;
 }

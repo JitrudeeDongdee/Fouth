@@ -106,6 +106,14 @@ function urlFor(page: PageState): string {
 const isPlainClick = (e: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }) =>
   e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
 
+/** One card on a slip's usage list: its kWh line, or why it was left out of the bill. */
+interface UsageLine {
+  id: number
+  name: string
+  line: Estimate['appliances'][number] | null
+  problem: string | null
+}
+
 /** What the slip's usage section draws. A per-viewer display preference, not bill data. */
 type UsageView = 'appliances' | 'tiers'
 
@@ -251,11 +259,20 @@ export default function App() {
   const resultA = pricedA.result
   const resultB = pricedB?.result ?? null
   const priced = shown === 'b' && pricedB ? pricedB : pricedA
-  /** The names of the cards a set's bill leaves out, for the note on its slip. */
-  const skippedIn = (id: SetId) => {
+  /**
+   * A set's cards in list order, each with its kWh line or, when it could not be priced,
+   * the reason. The slip lists all of them, so a card left out still has its place.
+   */
+  const usageOf = (id: SetId): UsageLine[] => {
     const set = id === 'a' ? pricedA : pricedB
     const list = id === 'a' ? rowsA : rowsB
-    return set ? list.filter((r) => set.problems.has(r.id)).map((r) => r.name || 'ไม่มีชื่อ') : []
+    if (!set) return []
+    return list.map((r) => ({
+      id: r.id,
+      name: r.name || 'ไม่มีชื่อ',
+      line: set.lineOf.get(r.id) ?? null,
+      problem: set.problems.get(r.id) ?? null,
+    }))
   }
 
   const startCompare = () => {
@@ -793,7 +810,7 @@ export default function App() {
                     <Slip
                       set={id}
                       result={id === 'a' ? resultA : (resultB ?? resultA)}
-                      skipped={skippedIn(id)}
+                      usage={usageOf(id)}
                       setLabel={compare ? SET_LABEL[id] : null}
                       editing={compare && shown === id}
                       onEdit={() => setEditing(id)}
@@ -835,8 +852,8 @@ function Slip(props: {
   /** What the usage section of the slip draws: kWh per appliance, or the tier staircase. */
   usageView: UsageView
   onUsageView: (view: UsageView) => void
-  /** The names of cards this bill leaves out because they could not be priced. */
-  skipped: string[]
+  /** Every card of this set in list order, priced or left out. */
+  usage: UsageLine[]
   /** The page explaining tiered rates, linked from the staircase. */
   learnHref: string
   onLearn: () => void
@@ -875,11 +892,6 @@ function Slip(props: {
               {baht(result.totalKwh)} หน่วย (kWh) · {props.utilityShort} อัตรา {result.tariffCode}
             </span>
           </div>
-          {props.skipped.length > 0 && (
-            <p className="slip-skipped">
-              ไม่ได้นำมาคิด {props.skipped.length} รายการ เพราะข้อมูลไม่ครบ: {props.skipped.join(', ')}
-            </p>
-          )}
 
           <div className="usage-head">
             <h3>{props.usageView === 'appliances' ? 'ใช้ไฟจากอะไรบ้าง' : 'ใช้ไฟถึงขั้นไหน'}</h3>
@@ -898,19 +910,29 @@ function Slip(props: {
           </div>
           {props.usageView === 'appliances' ? (
             <ul className="bars">
-              {result.appliances.map((a, i) => (
-                <li key={i}>
-                  <div className="bar-label">
-                    <span>{a.name}</span>
-                    <span className="muted">
-                      {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
-                    </span>
-                  </div>
-                  <div className="bar-track">
-                    <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
-                  </div>
-                </li>
-              ))}
+              {props.usage.map((u) =>
+                u.line ? (
+                  <li key={u.id}>
+                    <div className="bar-label">
+                      <span>{u.name}</span>
+                      <span className="muted">
+                        {baht(u.line.kwhPerMonth)} หน่วย · ~฿{baht(u.line.bahtShare)}
+                      </span>
+                    </div>
+                    <div className="bar-track">
+                      <div className="bar" style={{ width: `${(Number(u.line.kwhPerMonth) / props.maxKwh) * 100}%` }} />
+                    </div>
+                  </li>
+                ) : (
+                  // Left out of the bill: same place in the list, no figures, an empty bar.
+                  <li key={u.id} className="bar-skipped" title={u.problem ?? undefined}>
+                    <div className="bar-label">
+                      <span>{u.name}</span>
+                    </div>
+                    <div className="bar-track" />
+                  </li>
+                ),
+              )}
             </ul>
           ) : (
             <div className="slip-stairs">
@@ -932,6 +954,11 @@ function Slip(props: {
               >
                 ค่าไฟขั้นบันไดคิดยังไง →
               </a>
+              {props.usage.some((u) => !u.line) && (
+                <p className="small stairs-skipped">
+                  ไม่ได้นำมาคิด: {props.usage.filter((u) => !u.line).map((u) => u.name).join(', ')}
+                </p>
+              )}
             </div>
           )}
 
