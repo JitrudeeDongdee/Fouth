@@ -63,9 +63,18 @@ so the difference is only ever the appliances:
 - Set A is the list that already existed; set B is created by copying A the first time
   compare mode is turned on (a list against an empty one says nothing). `copyRows` gives
   every copied row a fresh id, so the two sets never share a row or a React key.
-- One set is edited at a time (tabs), while the result panel prices both and states the
-  difference per month and per year. Each column shows its own tariff code, because a
-  set that drops under 150 kWh moves to the cheaper one.
+- The mode is picked in a drawer ("รูปแบบบิล" button above the appliance list): บิลเดียว
+  or เปรียบเทียบ 2 บิล. It is a native `<dialog>` opened with `showModal()`, so focus
+  trapping, Esc and the backdrop come from the browser; a click on the backdrop closes
+  it. It slides in from the right, and from the bottom as a sheet under 560 px.
+- One set is edited at a time (tabs), while the result prints **two separate slips**,
+  one per set, each with its own total, tariff code, usage bars and bill table. The
+  slip of the set being edited is marked "กำลังแก้ชุดนี้"; the other has "แก้ชุดนี้" to
+  switch. Both slips share one bar scale, so equal bars mean equal kWh across bills.
+  Under the slips a summary card states the difference per month and per year, and
+  holds the "คำนวณอย่างไร" notes once rather than on each slip.
+- Compare mode widens the result column (`1fr / 1.3fr`); the printer is a CSS container
+  and puts the slips side by side only from 560 px of its own width, stacked below that.
 - The difference is computed in whole satang (`Math.round(baht * 100)`), not by
   subtracting two floats, so it cannot read 178.86999999999998.
 - Both sets, the mode and the Ft/days/utility choice are saved in `localStorage` under
@@ -78,7 +87,7 @@ The right-hand panel is drawn as a till slip fed out of a printer: a machine hea
 a status light, a slot, and the paper below it.
 
 - `.receipt` redefines `--ink`, `--muted`, `--line`, `--panel`, `--accent-soft` and
-  `--bar` locally, so the bars, bill table, compare columns and notes all pick up the
+  `--bar` locally, so the bars, bill table and notes all pick up the
   paper palette without rules of their own.
 - The torn bottom edge is a two-layer CSS mask (a conic-gradient tile repeated along the
   bottom). A mask clips a `box-shadow` away, so the paper's shade is a `filter:
@@ -88,9 +97,11 @@ a status light, a slot, and the paper below it.
   while typing; it is the paper that waits. The status light blinks during the wait.
 - The feed uses `steps(16)` rather than a smooth curve, because paper leaves a printer a
   notch at a time, and `.paper-feed` clips it so it appears from the slot.
-- The animation is restarted by removing the class, forcing a reflow and re-adding it.
-  Remounting the node with a `key` would also work but would close the notes section
-  on every print.
+- The animation is restarted by removing the class, forcing a reflow and re-adding it,
+  on every `.receipt` in the printer. Remounting with a `key` would also work but would
+  close the notes section on every print. A mode change does remount (the slip count
+  changes), and the reprint for that change is skipped so new slips feed only once.
+  Switching which set is edited does not reprint: it is not on the paper.
 - `prefers-reduced-motion: reduce` turns off both the feed and the blinking light.
 
 ### Estimator assumptions (shown to the user on the page)
@@ -170,7 +181,14 @@ divergence fails loudly instead of passing silently.
 - `feature/collapsible-appliances`: collapsible rows, the MEA/PEA picker with the
   September 2026 tariff, and the A/B compare mode. Engine tests pass on JVM and Node.js;
   12 web tests pass; `npm run build` succeeds; both utilities, the compare mode and the
-  printed-slip UI checked in the browser at desktop and 375 px. PR #4 into `develop`.
+  printed-slip UI checked in the browser at desktop and 375 px. PR #4 merged into
+  `develop`; the printed slip (406ffce) is PR #5 into `develop`, open.
+- `feature/bill-mode-drawer` (branched from `feature/collapsible-appliances`, so it
+  carries 406ffce until PR #5 merges): mode drawer + two separate slips in compare mode.
+  12 web tests pass, `npm run build` succeeds; checked in the browser at 1280 px (slips
+  side by side, ฿780.09 vs ฿162.83 with the air conditioner removed from B, "ชุด B
+  ถูกกว่า ฿617.26 ต่อเดือน · ฿7,407.12 ต่อปี") and 375 px (slips stacked, drawer as a
+  bottom sheet, no horizontal overflow).
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -188,5 +206,5 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-Human reviews the `feature/web-calculator` PR and merges it into `develop`; the merge
-deploys the estimator to GitHub Pages.
+Human reviews and merges PR #5 (printed slip) into `develop`, then the bill-mode drawer
+branch gets its own PR into `develop`; each merge deploys to GitHub Pages.

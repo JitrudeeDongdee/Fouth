@@ -464,42 +464,6 @@ input {
   margin-left: auto;
 }
 
-.compare {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 10px 0 4px;
-}
-
-.compare-col {
-  font: inherit;
-  display: grid;
-  gap: 2px;
-  text-align: left;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.compare-col:hover {
-  border-color: var(--accent);
-}
-
-.compare-col.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.compare-total {
-  /* Smaller than the single-set total: two of them have to fit on a phone. */
-  font-size: clamp(1.35rem, 4.5vw, 1.8rem);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
 .diff {
   margin: 8px 0 0;
   font-size: 0.9rem;
@@ -707,7 +671,9 @@ input {
   }
 }
 
-.receipt h2 {
+.receipt-title {
+  margin: 0;
+  font-weight: 700;
   text-align: center;
   font-size: 1rem;
   letter-spacing: 0.04em;
@@ -759,6 +725,237 @@ input {
   }
 
   .printer-led.busy {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Bill mode: a drawer picks one bill or two, and compare prints two slips.
+   --------------------------------------------------------------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.mode-btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.mode-btn:hover {
+  border-color: var(--accent);
+}
+
+/* Two slips need room, so compare mode hands the result column the larger share. */
+.layout.comparing {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+}
+
+@media (max-width: 860px) {
+  .layout.comparing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The printer is a container so the slips sit side by side only where both fit. */
+.printer {
+  container-type: inline-size;
+}
+
+.slips {
+  display: grid;
+  gap: 12px;
+}
+
+@container (min-width: 560px) {
+  .slips.two {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* Each slip in compare mode comes out of its own slot. */
+.slips.two .printer-slot {
+  margin: 0 4px;
+}
+
+.receipt-set {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--paper-faint);
+}
+
+.set-stamp {
+  padding: 1px 10px;
+  border: 1.5px solid var(--paper-ink);
+  border-radius: 4px;
+  color: var(--paper-ink);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.receipt-set .link-btn {
+  color: var(--paper-bar);
+}
+
+/* The slip of the set being edited carries a faint highlight along its edge. */
+.receipt.editing {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.slips.two .total-baht {
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+}
+
+.compare-summary {
+  margin-top: 4px;
+}
+
+.compare-summary h3 {
+  margin-top: 0;
+}
+
+.compare-summary .diff {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+/* Drawer: a native <dialog> slid in from the right edge (from the bottom on a phone). */
+.drawer {
+  margin: 0 0 0 auto;
+  width: min(420px, 100%);
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding: 0;
+  border: none;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
+}
+
+.drawer[open] {
+  animation: drawer-in 0.22s ease-out;
+}
+
+.drawer::backdrop {
+  background: rgba(10, 14, 12, 0.45);
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 560px) {
+  .drawer {
+    /* A modal dialog is pinned to both edges, which would stretch an auto height
+       to the full screen; letting go of the top lets the sheet hug its content. */
+    top: auto;
+    margin: auto 0 0;
+    width: 100%;
+    height: auto;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.25);
+  }
+
+  .drawer[open] {
+    animation-name: sheet-in;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+.drawer-body {
+  padding: 18px;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.mode-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mode-card {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: inherit;
+  cursor: pointer;
+}
+
+.mode-card:hover {
+  border-color: var(--accent);
+}
+
+.mode-card.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mode-text {
+  display: grid;
+  gap: 2px;
+}
+
+.mode-title {
+  font-weight: 700;
+}
+
+/* Little paper slips drawn in CSS: one for a single bill, two for compare. */
+.mode-pic {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  width: 56px;
+}
+
+.mode-pic > span {
+  width: 24px;
+  height: 34px;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 5px, var(--paper-line) 5px 6px) 4px 6px / 16px 20px no-repeat,
+    var(--paper);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer[open] {
     animation: none;
   }
 }

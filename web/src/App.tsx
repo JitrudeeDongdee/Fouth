@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { copyRows, defaultRows, KIND_LABEL, newRow, PRESETS, resumeIds, specSummary, type Kind, type Row } from './appliances'
 import { estimate, tariffCodes } from './estimate'
 
@@ -31,6 +31,18 @@ type SetId = 'a' | 'b'
 const SET_IDS: SetId[] = ['a', 'b']
 
 const SET_LABEL: Record<SetId, string> = { a: 'ชุด A', b: 'ชุด B' }
+
+/** The two ways the result can be printed, chosen in the drawer. */
+const BILL_MODES = [
+  { compare: false, title: 'บิลเดียว', detail: 'คิดค่าไฟจากเครื่องใช้ไฟฟ้าชุดเดียว' },
+  {
+    compare: true,
+    title: 'เปรียบเทียบ 2 บิล',
+    detail: 'พิมพ์บิลชุด A กับชุด B แยกกันคนละใบ แล้วบอกส่วนต่างต่อเดือนและต่อปี',
+  },
+] as const
+
+type Estimate = ReturnType<typeof estimate>
 
 interface Saved {
   /** Set A. Kept under the old name so a list saved before compare mode still loads. */
@@ -123,8 +135,23 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
+  const chooseMode = (wantCompare: boolean) => {
+    if (wantCompare && !compare) startCompare()
+    if (!wantCompare && compare) stopCompare()
+    closeDrawer()
+  }
+
+  // The mode picker is a native <dialog>: showModal() gives the focus trap, Esc and the backdrop.
+  const drawer = useRef<HTMLDialogElement>(null)
+  const openDrawer = () => drawer.current?.showModal()
+  const closeDrawer = () => drawer.current?.close()
+
   const chosenUtility = UTILITIES.find((u) => u.code === utility) ?? UTILITIES[1]
-  const maxKwh = Math.max(1, ...result.appliances.map((a) => Number(a.kwhPerMonth)))
+  // In compare mode both slips share one scale, so equal bars mean equal kWh across the two bills.
+  const maxKwh = Math.max(
+    1,
+    ...[resultA, ...(resultB ? [resultB] : [])].flatMap((r) => (r.error ? [] : r.appliances.map((a) => Number(a.kwhPerMonth)))),
+  )
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
@@ -134,34 +161,59 @@ export default function App() {
   const kwhOf = (index: number) => (result.error ? null : result.appliances[index]?.kwhPerMonth)
 
   // The slip is reprinted when anything it shows changes, but only once the edits stop.
-  const paper = useRef<HTMLDivElement>(null)
+  const feed = useRef<HTMLDivElement>(null)
   const firstPrint = useRef(true)
+  const printedMode = useRef(compare)
   const [printing, setPrinting] = useState(false)
   const [printedAt, setPrintedAt] = useState(() => new Date())
-  const slipContents = JSON.stringify([rowsA, rowsB, compare, shown, utility, ft, days])
+  // Which set is being edited is not on the paper, so switching tabs does not reprint.
+  const slipContents = JSON.stringify([rowsA, compare ? rowsB : null, utility, ft, days])
 
   useEffect(() => {
-    // The first slip is already printed by the class the markup ships with.
-    if (firstPrint.current) {
+    // The first slip is already printed by the class the markup ships with, and so is
+    // every slip a mode change mounts — reprinting those too would feed them twice.
+    if (firstPrint.current || printedMode.current !== compare) {
       firstPrint.current = false
+      printedMode.current = compare
+      setPrintedAt(new Date())
       return
     }
     setPrinting(true)
     const timer = setTimeout(() => {
       setPrinting(false)
       setPrintedAt(new Date())
-      const sheet = paper.current
-      if (!sheet) return
       // Restarting a CSS animation needs the class gone and the layout recomputed
       // before it goes back on; remounting instead would close the notes section.
-      sheet.classList.remove('feeding')
-      void sheet.offsetWidth
-      sheet.classList.add('feeding')
+      feed.current?.querySelectorAll<HTMLElement>('.receipt').forEach((sheet) => {
+        sheet.classList.remove('feeding')
+        void sheet.offsetWidth
+        sheet.classList.add('feeding')
+      })
     }, PRINT_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [slipContents])
+  }, [slipContents, compare])
 
   const stamp = printedAt.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+
+  // Printed once: on the single slip, or under the two slips in compare mode.
+  const notes = (
+    <details className="notes">
+      <summary>คำนวณอย่างไร</summary>
+      <ul>
+        <li>เครื่องทั่วไป: วัตต์ × ชั่วโมงต่อวัน ÷ 1,000 × จำนวนวัน</li>
+        <li>แอร์: BTU ÷ EER = วัตต์ แล้วคูณ % ที่คอมเพรสเซอร์ทำงาน (ค่าเริ่มต้น 70% เป็นการประมาณ)</li>
+        <li>ตู้เย็น: kWh ต่อปีจากฉลากประหยัดไฟ ÷ 365 × จำนวนวัน</li>
+        <li>
+          ใช้ไม่เกิน 150 หน่วยคิดอัตรา {chosenUtility.short} {tariffCodes[utility].small} เกินคิด{' '}
+          {tariffCodes[utility].large} (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
+        </li>
+        <li>
+          อัตราก้าวหน้าบ้านอยู่อาศัย เริ่มใช้บิลเดือน ก.ย. 2569 (200 หน่วยแรกไม่เกินหน่วยละ 3 บาท)
+          กฟน. และ กฟภ. ใช้อัตราเดียวกัน ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง
+        </li>
+      </ul>
+    </details>
+  )
 
   return (
     <div className="page">
@@ -173,7 +225,7 @@ export default function App() {
         </p>
       </header>
 
-      <main className="layout">
+      <main className={compare ? 'layout comparing' : 'layout'}>
         <section className="panel" aria-labelledby="appliances-title">
           <div className="panel-head">
             <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
@@ -183,8 +235,9 @@ export default function App() {
                 {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
               </button>
             )}
-            <button className="link-btn" onClick={compare ? stopCompare : startCompare}>
-              {compare ? 'ปิดการเทียบ' : 'เทียบ A/B'}
+            <button className="mode-btn" aria-haspopup="dialog" onClick={openDrawer}>
+              <span className="muted small">รูปแบบบิล</span> {compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}{' '}
+              <span aria-hidden="true">▸</span>
             </button>
           </div>
 
@@ -338,162 +391,216 @@ export default function App() {
         </section>
 
         <section className="printer" aria-labelledby="result-title">
+          <h2 id="result-title" className="visually-hidden">
+            ค่าไฟโดยประมาณต่อเดือน
+          </h2>
           <div className="printer-head" aria-hidden="true">
             <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
             <span className={printing ? 'printer-led busy' : 'printer-led'} />
           </div>
-          <div className="printer-slot" aria-hidden="true" />
 
-          <div className="paper-feed" aria-live="polite">
-            <div className="receipt feeding" ref={paper}>
-          <h2 id="result-title">ค่าไฟโดยประมาณต่อเดือน</h2>
-          <p className="receipt-meta">
-            {chosenUtility.short} · {days} วัน · Ft {ft}
-            <br />
-            พิมพ์เมื่อ {stamp}
-          </p>
-          {compare && (
-            <div className="compare">
-              {SET_IDS.map((id) => {
-                const set = id === 'a' ? resultA : resultB
-                return (
-                  <button
-                    key={id}
-                    className={shown === id ? 'compare-col on' : 'compare-col'}
-                    aria-pressed={shown === id}
-                    onClick={() => setEditing(id)}
+          {/* A mode change mounts fresh slips, which feed in from the class they ship with. */}
+          <div className={compare ? 'slips two' : 'slips'} ref={feed} key={compare ? 'compare' : 'single'}>
+            {(compare ? SET_IDS : (['a'] as SetId[])).map((id) => (
+              <div className="slip-col" key={id}>
+                <div className="printer-slot" aria-hidden="true" />
+                <div className="paper-feed" aria-live="polite">
+                  <Slip
+                    result={id === 'a' ? resultA : (resultB ?? resultA)}
+                    setLabel={compare ? SET_LABEL[id] : null}
+                    editing={compare && shown === id}
+                    onEdit={() => setEditing(id)}
+                    meta={`${chosenUtility.short} · ${days} วัน · Ft ${ft}`}
+                    stamp={stamp}
+                    utilityShort={chosenUtility.short}
+                    maxKwh={maxKwh}
                   >
-                    <span className="muted small">{SET_LABEL[id]}</span>
-                    {set && !set.error ? (
-                      <>
-                        <span className="compare-total">฿{baht(set.total)}</span>
-                        <span className="muted small">
-                          {baht(set.totalKwh)} หน่วย · อัตรา {set.tariffCode}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="compare-total muted">–</span>
-                        <span className="muted small">ข้อมูลไม่ถูกต้อง</span>
-                      </>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {difference !== null && (
-            <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
-              {difference === 0
-                ? 'สองชุดค่าไฟเท่ากัน'
-                : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
-                    fromSatang(Math.abs(difference) * 12),
-                  )} ต่อปี`}
-            </p>
-          )}
-
-          {result.error ? (
-            <p className="error">ข้อมูลไม่ถูกต้อง: {result.error}</p>
-          ) : (
-            <>
-              {!compare && (
-                <div className="total">
-                  <span className="total-baht">฿{baht(result.total)}</span>
-                  <span className="muted">
-                    {baht(result.totalKwh)} หน่วย (kWh) · {chosenUtility.short} อัตรา {result.tariffCode}
-                  </span>
+                    {!compare && notes}
+                  </Slip>
                 </div>
+              </div>
+            ))}
+          </div>
+
+          {compare && (
+            <div className="compare-summary panel" aria-live="polite">
+              <h3>ผลเทียบ</h3>
+              {difference === null ? (
+                <p className="muted">ยังเทียบไม่ได้ เพราะข้อมูลชุดใดชุดหนึ่งไม่ถูกต้อง</p>
+              ) : (
+                <p className={difference === 0 ? 'diff' : difference < 0 ? 'diff saving' : 'diff more'}>
+                  {difference === 0
+                    ? 'สองชุดค่าไฟเท่ากัน'
+                    : `ชุด B ${difference < 0 ? 'ถูกกว่า' : 'แพงกว่า'} ฿${baht(fromSatang(Math.abs(difference)))} ต่อเดือน · ฿${baht(
+                        fromSatang(Math.abs(difference) * 12),
+                      )} ต่อปี`}
+                </p>
               )}
-
-              <h3>ใช้ไฟจากอะไรบ้าง{compare ? ` · ${SET_LABEL[shown]}` : ''}</h3>
-              <ul className="bars">
-                {result.appliances.map((a, i) => (
-                  <li key={i}>
-                    <div className="bar-label">
-                      <span>{a.name}</span>
-                      <span className="muted">
-                        {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
-                      </span>
-                    </div>
-                    <div className="bar-track">
-                      <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / maxKwh) * 100}%` }} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-
-              <h3>รายละเอียดบิล{compare ? ` · ${SET_LABEL[shown]}` : ''}</h3>
-              <table className="bill">
-                <tbody>
-                  {result.energyLines.map((l) => (
-                    <tr key={l.label}>
-                      <td>
-                        หน่วยที่ {l.label}
-                        <span className="muted small">
-                          {' '}
-                          {l.kwh} × {l.pricePerKwh}
-                        </span>
-                      </td>
-                      <td className="num">{baht(l.amount)}</td>
-                    </tr>
-                  ))}
-                  <tr className="sub">
-                    <td>ค่าพลังงานไฟฟ้า</td>
-                    <td className="num">{baht(result.energyCharge)}</td>
-                  </tr>
-                  <tr>
-                    <td>ค่าบริการรายเดือน</td>
-                    <td className="num">{baht(result.serviceCharge)}</td>
-                  </tr>
-                  <tr>
-                    <td>ค่า Ft</td>
-                    <td className="num">{baht(result.ftCharge)}</td>
-                  </tr>
-                  <tr className="sub">
-                    <td>รวมก่อน VAT</td>
-                    <td className="num">{baht(result.subtotal)}</td>
-                  </tr>
-                  <tr>
-                    <td>VAT 7%</td>
-                    <td className="num">{baht(result.vat)}</td>
-                  </tr>
-                  <tr className="grand">
-                    <td>รวมทั้งสิ้น</td>
-                    <td className="num">{baht(result.total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          )}
-
-          <details className="notes">
-            <summary>คำนวณอย่างไร</summary>
-            <ul>
-              <li>เครื่องทั่วไป: วัตต์ × ชั่วโมงต่อวัน ÷ 1,000 × จำนวนวัน</li>
-              <li>แอร์: BTU ÷ EER = วัตต์ แล้วคูณ % ที่คอมเพรสเซอร์ทำงาน (ค่าเริ่มต้น 70% เป็นการประมาณ)</li>
-              <li>ตู้เย็น: kWh ต่อปีจากฉลากประหยัดไฟ ÷ 365 × จำนวนวัน</li>
-              <li>
-                ใช้ไม่เกิน 150 หน่วยคิดอัตรา {chosenUtility.short} {tariffCodes[utility].small} เกินคิด{' '}
-                {tariffCodes[utility].large} (การไฟฟ้าจริงดูประวัติย้อนหลัง จึงเป็นการประมาณ)
-              </li>
-              <li>
-                อัตราก้าวหน้าบ้านอยู่อาศัย เริ่มใช้บิลเดือน ก.ย. 2569 (200 หน่วยแรกไม่เกินหน่วยละ 3 บาท)
-                กฟน. และ กฟภ. ใช้อัตราเดียวกัน ผลลัพธ์เป็นค่าโดยประมาณ ไม่ใช่บิลจริง
-              </li>
-            </ul>
-          </details>
-
-          <div className="receipt-foot" aria-hidden="true">
-            <div className="barcode" />
-            <span>* ประมาณการ ไม่ใช่บิลจริง *</span>
-          </div>
+              {notes}
             </div>
-          </div>
+          )}
         </section>
       </main>
 
       <Footer />
+
+      <dialog
+        className="drawer"
+        ref={drawer}
+        aria-labelledby="drawer-title"
+        // A click that lands on the <dialog> itself, not its content, is a click on the backdrop.
+        onClick={(e) => e.target === e.currentTarget && closeDrawer()}
+      >
+        <div className="drawer-body">
+          <div className="drawer-head">
+            <h2 id="drawer-title">เลือกรูปแบบบิล</h2>
+            <button className="icon-btn" onClick={closeDrawer} aria-label="ปิด">
+              ✕
+            </button>
+          </div>
+          <div className="mode-list" role="radiogroup" aria-labelledby="drawer-title">
+            {BILL_MODES.map((m) => (
+              <button
+                key={m.title}
+                type="button"
+                role="radio"
+                aria-checked={compare === m.compare}
+                className={compare === m.compare ? 'mode-card on' : 'mode-card'}
+                onClick={() => chooseMode(m.compare)}
+              >
+                <span className={m.compare ? 'mode-pic two' : 'mode-pic'} aria-hidden="true">
+                  <span />
+                  {m.compare && <span />}
+                </span>
+                <span className="mode-text">
+                  <span className="mode-title">{m.title}</span>
+                  <span className="muted small">{m.detail}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="hint">
+            โหมดเปรียบเทียบเริ่มชุด B จากสำเนาของชุด A แก้ทีละชุดได้จากแท็บเหนือรายการเครื่องใช้ไฟฟ้า
+            ข้อมูลชุด B ยังเก็บไว้แม้กลับมาเป็นบิลเดียว
+          </p>
+        </div>
+      </dialog>
+    </div>
+  )
+}
+
+/** One printed bill. Compare mode prints two of these, one per set. */
+function Slip(props: {
+  result: Estimate
+  setLabel: string | null
+  editing: boolean
+  onEdit: () => void
+  meta: string
+  stamp: string
+  utilityShort: string
+  maxKwh: number
+  children?: ReactNode
+}) {
+  const { result, setLabel } = props
+  return (
+    <div className={props.editing ? 'receipt feeding editing' : 'receipt feeding'}>
+      {setLabel && (
+        <div className="receipt-set">
+          <span className="set-stamp">{setLabel}</span>
+          {props.editing ? (
+            <span className="small">● กำลังแก้ชุดนี้</span>
+          ) : (
+            <button className="link-btn small" onClick={props.onEdit}>
+              แก้ชุดนี้
+            </button>
+          )}
+        </div>
+      )}
+      <p className="receipt-title">ค่าไฟโดยประมาณต่อเดือน</p>
+      <p className="receipt-meta">
+        {props.meta}
+        <br />
+        พิมพ์เมื่อ {props.stamp}
+      </p>
+
+      {result.error ? (
+        <p className="error">ข้อมูลไม่ถูกต้อง: {result.error}</p>
+      ) : (
+        <>
+          <div className="total">
+            <span className="total-baht">฿{baht(result.total)}</span>
+            <span className="muted">
+              {baht(result.totalKwh)} หน่วย (kWh) · {props.utilityShort} อัตรา {result.tariffCode}
+            </span>
+          </div>
+
+          <h3>ใช้ไฟจากอะไรบ้าง</h3>
+          <ul className="bars">
+            {result.appliances.map((a, i) => (
+              <li key={i}>
+                <div className="bar-label">
+                  <span>{a.name}</span>
+                  <span className="muted">
+                    {baht(a.kwhPerMonth)} หน่วย · ~฿{baht(a.bahtShare)}
+                  </span>
+                </div>
+                <div className="bar-track">
+                  <div className="bar" style={{ width: `${(Number(a.kwhPerMonth) / props.maxKwh) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <h3>รายละเอียดบิล</h3>
+          <table className="bill">
+            <tbody>
+              {result.energyLines.map((l) => (
+                <tr key={l.label}>
+                  <td>
+                    หน่วยที่ {l.label}
+                    <span className="muted small">
+                      {' '}
+                      {l.kwh} × {l.pricePerKwh}
+                    </span>
+                  </td>
+                  <td className="num">{baht(l.amount)}</td>
+                </tr>
+              ))}
+              <tr className="sub">
+                <td>ค่าพลังงานไฟฟ้า</td>
+                <td className="num">{baht(result.energyCharge)}</td>
+              </tr>
+              <tr>
+                <td>ค่าบริการรายเดือน</td>
+                <td className="num">{baht(result.serviceCharge)}</td>
+              </tr>
+              <tr>
+                <td>ค่า Ft</td>
+                <td className="num">{baht(result.ftCharge)}</td>
+              </tr>
+              <tr className="sub">
+                <td>รวมก่อน VAT</td>
+                <td className="num">{baht(result.subtotal)}</td>
+              </tr>
+              <tr>
+                <td>VAT 7%</td>
+                <td className="num">{baht(result.vat)}</td>
+              </tr>
+              <tr className="grand">
+                <td>รวมทั้งสิ้น</td>
+                <td className="num">{baht(result.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {props.children}
+
+      <div className="receipt-foot" aria-hidden="true">
+        <div className="barcode" />
+        <span>* ประมาณการ ไม่ใช่บิลจริง *</span>
+      </div>
     </div>
   )
 }
