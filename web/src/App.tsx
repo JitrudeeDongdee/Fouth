@@ -14,7 +14,7 @@ import {
 import { estimate, tariffCodes, type Estimate } from './estimate'
 import { baht } from './format'
 import { LearnPage } from './LearnPage'
-import { currentTier, Stairs, tierRange, TierPanel } from './TierPanel'
+import { currentTier, Stairs, tierRange } from './TierPanel'
 
 const STORAGE_KEY = 'fouth-estimator-v1'
 // Ft announced for September–December 2026 (0.1623 บาท/หน่วย). It changes every four
@@ -52,39 +52,27 @@ const BILL_MODES = [
   { compare: true, title: 'เปรียบเทียบ 2 บิล', detail: 'ชุด A กับ B แยกคนละใบ' },
 ] as const
 
-/** What the result area shows: the printed bill, or the progressive rate step by step. */
-type ResultView = 'bill' | 'tiers'
-
-const RESULT_VIEWS: { id: ResultView; title: string }[] = [
-  { id: 'bill', title: 'บิล' },
-  { id: 'tiers', title: 'ขั้นบันได' },
-]
-
 /**
  * Which page is open lives in the URL, so a link opens the same page and the browser's
  * Back button steps between pages:
  *   ?mode=single | compare   one bill or two
- *   ?view=bill   | tiers     the printed bill or the progressive-rate table
  *   ?page=learn               the page explaining tiered rates (absent: the calculator)
- * A missing or unknown value reads as "not given": the mode falls back to the one saved
- * in localStorage, the view to the bill.
+ * A missing or unknown mode reads as "not given" and falls back to the one saved in
+ * localStorage. A `view` parameter from older links is dropped.
  */
 interface PageState {
   compare: boolean
-  view: ResultView
   /** The page explaining tiered rates (`?page=learn`); the calculator when false. */
   learn: boolean
 }
 
 const modeParam = (compare: boolean) => (compare ? 'compare' : 'single')
 
-function pageFromUrl(): { compare: boolean | null; view: ResultView | null; learn: boolean } {
+function pageFromUrl(): { compare: boolean | null; learn: boolean } {
   const params = new URLSearchParams(window.location.search)
   const mode = params.get('mode')
-  const view = params.get('view')
   return {
     compare: mode === 'compare' ? true : mode === 'single' ? false : null,
-    view: view === 'bill' || view === 'tiers' ? view : null,
     learn: params.get('page') === 'learn',
   }
 }
@@ -93,19 +81,19 @@ const urlMatches = (page: PageState) => {
   const params = new URLSearchParams(window.location.search)
   return (
     params.get('mode') === modeParam(page.compare) &&
-    params.get('view') === page.view &&
-    params.get('page') === (page.learn ? 'learn' : null)
+    params.get('page') === (page.learn ? 'learn' : null) &&
+    !params.has('view')
   )
 }
 
 /**
- * The current address with `mode`, `view` and `page` set, so any other query or hash is
- * kept. The learn page keeps `mode` and `view`, so going back lands where the reader was.
+ * The current address with `mode` and `page` set, so any other query or hash is kept.
+ * The learn page keeps `mode`, so going back lands on the mode the reader was in.
  */
 function urlFor(page: PageState): string {
   const url = new URL(window.location.href)
   url.searchParams.set('mode', modeParam(page.compare))
-  url.searchParams.set('view', page.view)
+  url.searchParams.delete('view')
   if (page.learn) url.searchParams.set('page', 'learn')
   else url.searchParams.delete('page')
   return url.pathname + url.search + url.hash
@@ -212,7 +200,6 @@ export default function App() {
   const [compare, setCompare] = useState(initial.compare)
   const [editing, setEditing] = useState<SetId>('a')
   // The result area shows either the printed bill or how the progressive rate was applied.
-  const [view, setView] = useState<ResultView>(() => pageFromUrl().view ?? 'bill')
   const [learn, setLearn] = useState(() => pageFromUrl().learn)
   // One choice for every slip, so two slips in compare mode always draw the same thing.
   const [usageView, setUsageView] = useState<UsageView>(loadUsageView)
@@ -262,24 +249,23 @@ export default function App() {
   }
   const resetBfromA = () => setRowsB(copyRows(rowsA))
 
-  // Page → URL. The first write replaces the entry (the page's own address gains ?mode= and
-  // ?view=), later ones add an entry so Back returns to the previous page. A change that
+  // Page → URL. The first write replaces the entry (the page's own address gains ?mode=),
+  // later ones add an entry so Back returns to the previous page. A change that
   // came from Back/Forward already matches the URL, so it writes nothing.
   const urlSynced = useRef(false)
   useEffect(() => {
-    const page = { compare, view, learn }
+    const page = { compare, learn }
     if (!urlMatches(page)) {
       if (urlSynced.current) window.history.pushState(null, '', urlFor(page))
       else window.history.replaceState(null, '', urlFor(page))
     }
     urlSynced.current = true
-  }, [compare, view, learn])
+  }, [compare, learn])
 
   // URL → page, when Back/Forward moves between entries.
   useEffect(() => {
     const onPop = () => {
       const fromUrl = pageFromUrl()
-      setView(fromUrl.view ?? 'bill')
       setLearn(fromUrl.learn)
       if (fromUrl.compare === null || fromUrl.compare === compare) return
       if (fromUrl.compare) startCompare()
@@ -349,20 +335,11 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
-  const goTo = (id: string, wantView?: ResultView) => {
+  const goTo = (id: string) => {
     afterNav()
-    // Every target lives on the calculator; leave the learn page first.
+    // Every target lives on the calculator; leave the learn page first and let it render.
     if (learn) {
       setLearn(false)
-      if (wantView) setView(wantView)
-      window.setTimeout(() => goToNow(id), 0)
-      return
-    }
-    // The notes live on the slips, so reaching them means showing the bill first.
-    const needView = wantView ?? (id === 'how' ? 'bill' : undefined)
-    if (needView && needView !== view) {
-      setView(needView)
-      // Let React render the other view before looking for the target in it.
       window.setTimeout(() => goToNow(id), 0)
       return
     }
@@ -487,7 +464,6 @@ export default function App() {
         <span className="topbar-brand">Fouth · คำนวณค่าไฟบ้าน</span>
         <span className="topbar-mode">
           {learn ? 'ความรู้ค่าไฟ' : compare ? 'เปรียบเทียบ 2 บิล' : 'บิลเดียว'}
-          {!learn && view === 'tiers' && ' · ขั้นบันได'}
         </span>
       </header>
 
@@ -507,7 +483,7 @@ export default function App() {
                 {/* A real link, so it can be copied or opened in a new tab; a plain click stays in the page. */}
                 <a
                   ref={i === 0 ? firstNavItem : undefined}
-                  href={urlFor({ compare: m.compare, view, learn: false })}
+                  href={urlFor({ compare: m.compare, learn: false })}
                   className={compare === m.compare ? 'nav-item on' : 'nav-item'}
                   aria-current={compare === m.compare ? 'page' : undefined}
                   title={m.title}
@@ -530,38 +506,11 @@ export default function App() {
             ))}
           </ul>
 
-          <p className="nav-label">หน้า</p>
-          <ul className="nav-list">
-            {RESULT_VIEWS.map((v) => (
-              <li key={v.id}>
-                <a
-                  href={urlFor({ compare, view: v.id, learn: false })}
-                  className={!learn && view === v.id ? 'nav-item on' : 'nav-item'}
-                  aria-current={!learn && view === v.id ? 'page' : undefined}
-                  title={v.title}
-                  onClick={(e) => {
-                    if (!isPlainClick(e)) return
-                    e.preventDefault()
-                    goTo('result', v.id)
-                  }}
-                >
-                  <span className="nav-icon" aria-hidden="true">
-                    {v.id === 'bill' ? '🧾' : '📶'}
-                  </span>
-                  <span className="nav-text">
-                    <span className="nav-title">{v.title}</span>
-                    <span className="nav-detail">{v.id === 'bill' ? 'สลิปค่าไฟ' : 'ตารางคิดค่าไฟทีละขั้น'}</span>
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-
           <p className="nav-label">ความรู้</p>
           <ul className="nav-list">
             <li>
               <a
-                href={urlFor({ compare, view, learn: true })}
+                href={urlFor({ compare, learn: true })}
                 className={learn ? 'nav-item on' : 'nav-item'}
                 aria-current={learn ? 'page' : undefined}
                 title="ค่าไฟขั้นบันไดคิดยังไง"
@@ -586,6 +535,7 @@ export default function App() {
           <ul className="nav-list">
             {[
               { id: 'appliances-title', icon: '🔌', title: 'เครื่องใช้ไฟฟ้า' },
+              { id: 'result', icon: '🧾', title: 'ผลคำนวณ' },
               { id: 'how', icon: 'ℹ️', title: 'วิธีคำนวณ' },
             ].map((link) => (
               <li key={link.id}>
@@ -619,7 +569,7 @@ export default function App() {
             smallCode={tariffCodes[utility].small}
             largeCode={tariffCodes[utility].large}
             myKwh={resultA.error ? null : resultA.totalKwh}
-            backHref={urlFor({ compare, view, learn: false })}
+            backHref={urlFor({ compare, learn: false })}
             onBack={() => openLearn(false)}
           />
         )}
@@ -828,40 +778,6 @@ export default function App() {
             <h2 id="result-title" className="visually-hidden">
               ค่าไฟโดยประมาณต่อเดือน
             </h2>
-            <div className="tabs result-tabs" role="tablist" aria-label="มุมมองผลลัพธ์">
-              {RESULT_VIEWS.map((v) => (
-                <button
-                  key={v.id}
-                  role="tab"
-                  id={`view-${v.id}`}
-                  aria-selected={view === v.id}
-                  aria-controls="result-panel"
-                  className={view === v.id ? 'tab on' : 'tab'}
-                  onClick={() => setView(v.id)}
-                >
-                  {v.title}
-                </button>
-              ))}
-            </div>
-
-            <div id="result-panel" role="tabpanel" aria-labelledby={`view-${view}`}>
-            {view === 'tiers' ? (
-              <div className={compare ? 'tier-panels two' : 'tier-panels'}>
-                {(compare ? SET_IDS : (['a'] as SetId[])).map((id) => (
-                  <TierPanel
-                    key={id}
-                    result={id === 'a' ? resultA : (resultB ?? resultA)}
-                    setLabel={compare ? SET_LABEL[id] : null}
-                    utilityShort={chosenUtility.short}
-                    smallCode={tariffCodes[utility].small}
-                    largeCode={tariffCodes[utility].large}
-                    learnHref={urlFor({ compare, view, learn: true })}
-                    onLearn={() => openLearn(true)}
-                  />
-                ))}
-              </div>
-            ) : (
-            <>
             <div className="printer-head" aria-hidden="true">
               <span className="printer-brand">Fouth · เครื่องคิดค่าไฟ</span>
               <span className={printing ? 'printer-led busy' : 'printer-led'} />
@@ -885,15 +801,14 @@ export default function App() {
                       maxKwh={maxKwh}
                       usageView={usageView}
                       onUsageView={setUsageView}
+                      learnHref={urlFor({ compare, learn: true })}
+                      onLearn={() => openLearn(true)}
                     >
                       {notes(id === 'a')}
                     </Slip>
                   </div>
                 </div>
               ))}
-            </div>
-            </>
-            )}
             </div>
           </section>
         </main>
@@ -918,6 +833,9 @@ function Slip(props: {
   /** What the usage section of the slip draws: kWh per appliance, or the tier staircase. */
   usageView: UsageView
   onUsageView: (view: UsageView) => void
+  /** The page explaining tiered rates, linked from the staircase. */
+  learnHref: string
+  onLearn: () => void
   children?: ReactNode
 }) {
   const { result, setLabel } = props
@@ -994,6 +912,17 @@ function Slip(props: {
                   {Number(top.pricePerKwh).toFixed(4)} · แต่ละขั้นคิดเงินตามรายละเอียดด้านล่าง
                 </p>
               )}
+              <a
+                className="learn-link"
+                href={props.learnHref}
+                onClick={(e) => {
+                  if (!isPlainClick(e)) return
+                  e.preventDefault()
+                  props.onLearn()
+                }}
+              >
+                ค่าไฟขั้นบันไดคิดยังไง →
+              </a>
             </div>
           )}
 

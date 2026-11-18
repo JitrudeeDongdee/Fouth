@@ -1168,26 +1168,8 @@ input {
 }
 
 /* ---------------------------------------------------------------------------
-   Result tabs: the printed bill, or the progressive rate step by step.
+   Tier panel (learn page): the progressive rate step by step.
    --------------------------------------------------------------------------- */
-
-.result-tabs {
-  width: fit-content;
-  margin-bottom: 10px;
-  background: var(--panel);
-}
-
-.tier-panels {
-  display: grid;
-  gap: 12px;
-}
-
-@container (min-width: 560px) {
-  .tier-panels.two {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
-}
 
 .tier-panel {
   display: grid;

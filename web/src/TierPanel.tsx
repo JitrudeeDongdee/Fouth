@@ -54,9 +54,6 @@ export function TierPanel(props: {
   utilityShort: string
   smallCode: string
   largeCode: string
-  /** Where "how tiered rates work" links to; omitted on that page itself. */
-  learnHref?: string
-  onLearn?: () => void
 }) {
   const { result } = props
   if (result.error) {
@@ -147,20 +144,6 @@ export function TierPanel(props: {
         <li>แต่ละขั้นคิดเฉพาะหน่วยที่อยู่ในช่วงนั้น หน่วยแรก ๆ ยังคิดราคาขั้นต้นเสมอ ไม่ได้คิดราคาขั้นสูงทั้งหมด</li>
         <li>ยอดแต่ละขั้นปัดเป็นสตางค์เพื่อแสดงผล บิลปัดเศษครั้งเดียวที่ยอดรวมค่าพลังงาน</li>
       </ul>
-
-      {props.learnHref && (
-        <a
-          className="learn-link"
-          href={props.learnHref}
-          onClick={(e) => {
-            if (!props.onLearn || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-            e.preventDefault()
-            props.onLearn()
-          }}
-        >
-          อ่านว่าค่าไฟขั้นบันไดคิดยังไง →
-        </a>
-      )}
     </div>
   )
 }

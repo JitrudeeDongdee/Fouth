@@ -77,8 +77,8 @@ so any difference between the two bills comes only from the appliances:
   every copied row a fresh id, so the two sets never share a row or a React key.
 - The mode is picked in the sidebar (see "App frame" below): บิลเดียว or เปรียบเทียบ 2 บิล.
   The top bar shows the current mode as a chip.
-- The mode is in the URL: `?mode=single` or `?mode=compare`. The result page is too:
-  `?view=bill` or `?view=tiers` (see "Tiers tab" below). Both follow the same rules.
+- The mode is in the URL: `?mode=single` or `?mode=compare`. The learn page adds
+  `?page=learn`. A `view` parameter from older links (the removed tiers tab) is dropped.
   - On load, a valid `?mode=` wins over the mode saved in `localStorage`. A missing or
     unknown value falls back to the saved mode, and the URL is corrected with
     `replaceState`, keeping any other query parameters and the hash.
@@ -109,9 +109,9 @@ so any difference between the two bills comes only from the appliances:
 - `?page=learn` opens a full-width explainer in place of the calculator. The calculator
   stays mounted behind it (`hidden`), so nothing typed is lost. `mode` and `view` stay in
   the URL, so "← กลับไปหน้าคำนวณ" (or Back) lands where the reader was.
-- Ways in: the sidebar's "ความรู้ → ค่าไฟขั้นบันไดคิดยังไง" (a real link), and a link at the
-  foot of each panel in the ขั้นบันได tab. The mode and page links in the sidebar leave
-  the learn page.
+- Ways in: the sidebar's "ความรู้ → ค่าไฟขั้นบันไดคิดยังไง" (a real link), and
+  "ค่าไฟขั้นบันไดคิดยังไง →" under the staircase on a slip. The mode links in the sidebar
+  leave the learn page.
 - Sections, every figure from the engine:
   1. The idea, in four steps.
   2. The common misreading at 300 units: every unit at the last tier's price vs the
@@ -135,33 +135,17 @@ so any difference between the two bills comes only from the appliances:
   thing. It is a per-viewer display preference in `localStorage`
   (`fouth-slip-usage-view`), not bill data and not in the URL. Toggling does not reprint
   the slip.
-- The staircase is the same `Stairs` component the ขั้นบันได tab and learn page use.
+- The staircase is the same `Stairs` component the learn page uses, and has a link to it.
 
-### Tiers tab: the progressive rate step by step (web only)
+### Tier panel (learn page only)
 
-- The bill and the tiers table are two pages of the same app, picked by `?view=bill` or
-  `?view=tiers`, the same way `?mode=` picks the mode.
-  - On load a valid `?view=` opens that page. A missing or unknown value opens the bill,
-    and the URL is corrected with `replaceState`.
-  - Changing page pushes a history entry; Back/Forward step between pages.
-  - Mode and view are independent: switching mode keeps the page, and the reverse.
-- Ways to switch page: the tabs above the result, the sidebar's "หน้า" section
-  (`<a href="?mode=…&view=…">` links, so they can be copied or opened in a new tab), or
-  "ไปที่ → วิธีคำนวณ", which switches to the bill because the notes live on the slips.
-  The top-bar chip shows "· ขั้นบันได" on that page.
-- One panel per set (two side by side in compare mode, from 560 px of printer width).
-  Each panel has:
-  - Why this tariff: up to 150 units → small-household code, over → large. The limit
-    comes from the engine.
-  - A staircase: one column per tier, height by price per unit, and a fill showing how
-    much of that tier's range was used. The open-ended last tier fills when reached, and
-    the tier the last unit landed in is outlined.
-  - A table, one row per tier: range, "kWh × price", and amount. The current tier is
-    highlighted. Unreached tiers read "ยังไม่ถึง" with their price. A footer shows the
-    energy charge.
-  - Notes: units left until the next tier and its price. On the small tariff, how many
-    units until the whole month switches to the large one. Also, that each tier only
-    prices the units inside it, and that per-tier amounts are display-rounded.
+- `TierPanel` prices one usage tier by tier. It shows why the tariff applies, the
+  `Stairs` chart, a table of "kWh × price = amount" per tier with unreached tiers greyed,
+  the energy charge, and the units left to the next tier and to the 150-unit switch.
+  It is used by the learn page's "ลองคำนวณเอง" box.
+- The calculator used to have a "บิล | ขั้นบันได" tab pair with `?view=bill|tiers`. It was
+  removed once the slip got its own bars/staircase toggle: the slip carries the
+  staircase, and the full explanation lives on the learn page.
 
 ### Adding an appliance (web only)
 
@@ -336,6 +320,10 @@ divergence fails loudly instead of passing silently.
   Slip usage toggle: checked in the browser. Switching to ขั้นบันได draws 5 steps with
   "ขั้นที่ 3 (25–200) หน่วยละ ฿3.0000" for 48.66 units, and the choice is stored. In
   compare mode both slips follow one toggle and nothing reprints.
+  Tiers tab removed: checked in the browser. Opening `?mode=single&view=tiers` shows the
+  bill and the URL becomes `?mode=single`; there are no result tabs; the sidebar has no
+  "หน้า" section and "ไปที่ → ผลคำนวณ" scrolls to the slip; the slip's staircase link opens
+  `?page=learn` and Back returns. 15 web tests pass and the build succeeds.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
