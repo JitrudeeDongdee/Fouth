@@ -444,19 +444,43 @@ input {
   margin-left: auto;
 }
 
+/* The slip's usage list is one grid: name | units | baht, with each bar spanning the row
+   under it. Every row shares the columns, so the figures line up like a table. */
 .bars {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  align-items: baseline;
+  font-size: 0.88rem;
 }
 
-.bar-label {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.88rem;
+.bars li {
+  display: contents;
+}
+
+.bars .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bars-head span {
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+
+.bar-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bars .bar-track {
+  grid-column: 1 / -1;
+  margin: 3px 0 8px;
 }
 
 .bar-track {
@@ -1716,7 +1740,7 @@ input {
 }
 
 /* A card left out of the bill keeps its place on the slip: red name, no figures, no bar. */
-.bar-skipped .bar-label span,
+.bar-skipped .bar-name,
 .stairs-skipped {
   color: var(--error);
 }

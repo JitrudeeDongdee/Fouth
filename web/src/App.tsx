@@ -909,16 +909,19 @@ function Slip(props: {
             </div>
           </div>
           {props.usageView === 'appliances' ? (
-            <ul className="bars">
+            // One grid for the whole list, so the name, units and baht columns line up row to row.
+            <ul className="bars" aria-label="การใช้ไฟของแต่ละเครื่อง">
+              <li className="bars-head" aria-hidden="true">
+                <span />
+                <span className="num">หน่วย</span>
+                <span className="num">~บาท</span>
+              </li>
               {props.usage.map((u) =>
                 u.line ? (
                   <li key={u.id}>
-                    <div className="bar-label">
-                      <span>{u.name}</span>
-                      <span className="muted">
-                        {baht(u.line.kwhPerMonth)} หน่วย · ~฿{baht(u.line.bahtShare)}
-                      </span>
-                    </div>
+                    <span className="bar-name">{u.name}</span>
+                    <span className="num">{baht(u.line.kwhPerMonth)}</span>
+                    <span className="num">{baht(u.line.bahtShare)}</span>
                     <div className="bar-track">
                       <div className="bar" style={{ width: `${(Number(u.line.kwhPerMonth) / props.maxKwh) * 100}%` }} />
                     </div>
@@ -926,9 +929,9 @@ function Slip(props: {
                 ) : (
                   // Left out of the bill: same place in the list, no figures, an empty bar.
                   <li key={u.id} className="bar-skipped" title={u.problem ?? undefined}>
-                    <div className="bar-label">
-                      <span>{u.name}</span>
-                    </div>
+                    <span className="bar-name">{u.name}</span>
+                    <span className="num" />
+                    <span className="num" />
                     <div className="bar-track" />
                   </li>
                 ),

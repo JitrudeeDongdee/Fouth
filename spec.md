@@ -136,6 +136,9 @@ so any difference between the two bills comes only from the appliances:
   3. The bill is the cards that are left, and each card's kWh line is looked up by its id.
 - A set-aside card has a red border. It shows "ไม่ได้นำมาคิด" when collapsed, and the
   reason plus "ยังไม่ได้นำการ์ดนี้มาคิดในบิล" when open.
+- The slip's "ใช้ไฟจากอะไรบ้าง" list is one CSS grid: name | หน่วย | ~บาท, with a small
+  header row. The `li`s are `display: contents`, so every row shares the same columns
+  and the numbers right-align like a table. Each bar spans the full row under it.
 - On the slip, the "ใช้ไฟจากอะไรบ้าง" list shows every card in list order. A card left out
   keeps its place with its name in red, an empty bar, and no units or baht; its reason
   is in the tooltip. The staircase view has no per-card list, so it shows one red line,
@@ -442,6 +445,9 @@ divergence fails loudly instead of passing silently.
   the fridge is listed first in red with no bar, units or baht, and the 6 priced cards
   keep their figures; the dashed box is gone; the staircase view shows "ไม่ได้นำมาคิด:
   ตู้เย็น 2 ประตู".
+  Usage table (PR #9 merged; new branch `feature/slip-usage-table`): 28 web tests pass
+  and the build succeeds. On slip A all figures sit on exactly two right edges (units,
+  baht) at 1280 px and at 375 px; no name wraps at 1280 px, and nothing overflows.
 
 ### CI/CD (`.github/workflows/ci.yml`)
 
@@ -459,5 +465,5 @@ divergence fails loudly instead of passing silently.
 
 ## Next step
 
-PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. PR #8 is merged and live at dc5cfb3. Next, a human reviews and merges the PR for
-`feature/slip-skipped-inline` → `develop`, and the merge deploys it.
+PRs #5, #6 and #7 are merged and live; GitHub Pages serves `develop` at 511f577. PRs #8 and #9 are merged into `develop`. Next, a human reviews and merges the PR for
+`feature/slip-usage-table` → `develop`, and the merge deploys it.
