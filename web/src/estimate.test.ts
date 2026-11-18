@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { newRow, PRESETS } from './appliances'
-import { estimate, estimateKwh, tariffCodes, tariffSchedules } from './estimate'
+import { estimate, estimateKwh, estimateRows, rowProblem, tariffCodes, tariffSchedules } from './estimate'
 
 // Checks the page talks to the compiled Kotlin engine correctly. The pricing rules
 // themselves are tested in billing-engine (commonTest, on JVM and JS).
@@ -87,5 +87,33 @@ describe('estimate', () => {
   it('reports text that is not a number', () => {
     const result = estimate([newRow({ ...PRESETS[3], watts: 'abc' })], 'PEA', '0.3972', 30)
     expect(result.error).toContain('not a number')
+  })
+
+  it('prices the good cards and sets a broken one aside, instead of voiding the bill', () => {
+    const home = typicalHome()
+    const broken = newRow({ ...PRESETS[3], name: 'ทีวีห้องนอน', watts: '' })
+    const { result, problems, lineOf } = estimateRows([...home, broken], 'PEA', '0.3972', 30)
+
+    // The bill is exactly the bill of the three good cards.
+    expect(result.error).toBe('')
+    expect(result.total).toBe(estimate(home, 'PEA', '0.3972', 30).total)
+    expect([...problems.keys()]).toEqual([broken.id])
+    expect(problems.get(broken.id)).toBe('ยังไม่ได้กรอก: กำลังไฟ')
+    expect(home.map((r) => lineOf.get(r.id)?.kwhPerMonth)).toEqual(['168.00', '30.00', '15.00'])
+    expect(lineOf.has(broken.id)).toBe(false)
+  })
+
+  it('still fails the whole bill for a problem every card shares', () => {
+    const { result, problems } = estimateRows(typicalHome(), 'PEA', 'abc', 30)
+    expect(result.error).not.toBe('')
+    expect(problems.size).toBe(0)
+  })
+
+  it('explains a rejected card in Thai', () => {
+    const tv = newRow(PRESETS[3])
+    expect(rowProblem({ ...tv, watts: '', hoursPerDay: '' }, '')).toBe('ยังไม่ได้กรอก: กำลังไฟ, ใช้วันละ')
+    expect(rowProblem({ ...tv, hoursPerDay: '30' }, 'ทีวี: hours per day must be 0..24')).toBe('ชั่วโมงใช้งานต่อวันต้องอยู่ระหว่าง 0–24')
+    expect(rowProblem({ ...tv, watts: 'abc' }, 'ทีวี: "abc" is not a number')).toBe('มีช่องที่ไม่ใช่ตัวเลข')
+    expect(rowProblem(tv, 'ทีวี: something new')).toBe('something new')
   })
 })

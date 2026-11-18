@@ -11,7 +11,7 @@ import {
   type Preset,
   type Row,
 } from './appliances'
-import { estimate, tariffCodes, type Estimate } from './estimate'
+import { estimateRows, tariffCodes, type Estimate } from './estimate'
 import { baht } from './format'
 import { AppliancePicker } from './AppliancePicker'
 import { iconOf } from './catalog'
@@ -242,12 +242,21 @@ export default function App() {
 
   const dayCount = Number.parseInt(days, 10)
   const validDays = Number.isFinite(dayCount) ? dayCount : 0
-  const resultA = useMemo(() => estimate(rowsA, utility, ft, validDays), [rowsA, utility, ft, validDays])
-  const resultB = useMemo(
-    () => (compare ? estimate(rowsB, utility, ft, validDays) : null),
+  // Each set is priced with its broken cards set aside, so one bad card does not void the bill.
+  const pricedA = useMemo(() => estimateRows(rowsA, utility, ft, validDays), [rowsA, utility, ft, validDays])
+  const pricedB = useMemo(
+    () => (compare ? estimateRows(rowsB, utility, ft, validDays) : null),
     [compare, rowsB, utility, ft, validDays],
   )
-  const result = shown === 'b' && resultB ? resultB : resultA
+  const resultA = pricedA.result
+  const resultB = pricedB?.result ?? null
+  const priced = shown === 'b' && pricedB ? pricedB : pricedA
+  /** The names of the cards a set's bill leaves out, for the note on its slip. */
+  const skippedIn = (id: SetId) => {
+    const set = id === 'a' ? pricedA : pricedB
+    const list = id === 'a' ? rowsA : rowsB
+    return set ? list.filter((r) => set.problems.has(r.id)).map((r) => r.name || 'ไม่มีชื่อ') : []
+  }
 
   const startCompare = () => {
     // Start B from a copy of A: a side-by-side of a list against an empty one says nothing.
@@ -391,8 +400,8 @@ export default function App() {
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
   const allCollapsed = rows.length > 0 && rows.every((r) => r.collapsed)
   const setAllCollapsed = (collapsed: boolean) => setRows((all) => all.map((r) => ({ ...r, collapsed })))
-  // Rows and result lines come back in the same order, so a row's kWh is at its own index.
-  const kwhOf = (index: number) => (result.error ? null : result.appliances[index]?.kwhPerMonth)
+  const kwhOf = (row: Row) => priced.lineOf.get(row.id)?.kwhPerMonth ?? null
+  const problemOf = (row: Row) => priced.problems.get(row.id) ?? null
 
   // Each slip is reprinted when what it shows changes, but only once the edits stop.
   // Editing set A reprints only A's slip; the shared settings are on both, so they reprint both.
@@ -402,9 +411,11 @@ export default function App() {
   const printedContents = useRef<Record<SetId, string>>({ a: '', b: '' })
   const [printing, setPrinting] = useState(false)
   const [printedAt, setPrintedAt] = useState<Record<SetId, Date>>(() => ({ a: new Date(), b: new Date() }))
+  // Whether a card is open is not on the paper, so opening or closing one reprints nothing.
+  const onPaper = (list: Row[]) => list.map(({ collapsed: _open, ...card }) => card)
   const contents: Record<SetId, string> = {
-    a: JSON.stringify([rowsA, utility, ft, days]),
-    b: JSON.stringify([rowsB, utility, ft, days]),
+    a: JSON.stringify([onPaper(rowsA), utility, ft, days]),
+    b: JSON.stringify([onPaper(rowsB), utility, ft, days]),
   }
 
   useEffect(() => {
@@ -631,9 +642,9 @@ export default function App() {
             {rows.length === 0 && <p className="empty">ยังไม่มีเครื่องใช้ไฟฟ้า เลือกจากรายการด้านล่างเพื่อเริ่ม</p>}
 
             <ul className="rows">
-              {rows.map((row, index) =>
+              {rows.map((row) =>
                 row.collapsed ? (
-                  <li key={row.id} className="row row-collapsed" data-row-id={row.id}>
+                  <li key={row.id} className={problemOf(row) ? 'row row-collapsed row-invalid' : 'row row-collapsed'} data-row-id={row.id}>
                     <button
                       className="row-summary"
                       aria-expanded="false"
@@ -647,14 +658,18 @@ export default function App() {
                         <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
                         <span className="muted small">{specSummary(row)}</span>
                       </span>
-                      {kwhOf(index) && <span className="summary-kwh">{kwhOf(index)} หน่วย</span>}
+                      {problemOf(row) ? (
+                        <span className="summary-skip">ไม่ได้นำมาคิด</span>
+                      ) : (
+                        kwhOf(row) && <span className="summary-kwh">{kwhOf(row)} หน่วย</span>
+                      )}
                     </button>
                     <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
                       ✕
                     </button>
                   </li>
                 ) : (
-                <li key={row.id} className="row" data-row-id={row.id}>
+                <li key={row.id} className={problemOf(row) ? 'row row-invalid' : 'row'} data-row-id={row.id}>
                   <div className="row-top">
                     <button
                       className="icon-btn chevron-btn"
@@ -675,6 +690,11 @@ export default function App() {
                       ✕
                     </button>
                   </div>
+                  {problemOf(row) && (
+                    <p className="row-problem" role="status">
+                      {problemOf(row)} · ยังไม่ได้นำการ์ดนี้มาคิดในบิล
+                    </p>
+                  )}
                   <label className="kind">
                     <span>คิดจาก</span>
                     <select value={row.kind} onChange={(e) => update(row.id, { kind: e.target.value as Kind })}>
@@ -773,6 +793,7 @@ export default function App() {
                     <Slip
                       set={id}
                       result={id === 'a' ? resultA : (resultB ?? resultA)}
+                      skipped={skippedIn(id)}
                       setLabel={compare ? SET_LABEL[id] : null}
                       editing={compare && shown === id}
                       onEdit={() => setEditing(id)}
@@ -814,6 +835,8 @@ function Slip(props: {
   /** What the usage section of the slip draws: kWh per appliance, or the tier staircase. */
   usageView: UsageView
   onUsageView: (view: UsageView) => void
+  /** The names of cards this bill leaves out because they could not be priced. */
+  skipped: string[]
   /** The page explaining tiered rates, linked from the staircase. */
   learnHref: string
   onLearn: () => void
@@ -852,6 +875,11 @@ function Slip(props: {
               {baht(result.totalKwh)} หน่วย (kWh) · {props.utilityShort} อัตรา {result.tariffCode}
             </span>
           </div>
+          {props.skipped.length > 0 && (
+            <p className="slip-skipped">
+              ไม่ได้นำมาคิด {props.skipped.length} รายการ เพราะข้อมูลไม่ครบ: {props.skipped.join(', ')}
+            </p>
+          )}
 
           <div className="usage-head">
             <h3>{props.usageView === 'appliances' ? 'ใช้ไฟจากอะไรบ้าง' : 'ใช้ไฟถึงขั้นไหน'}</h3>
