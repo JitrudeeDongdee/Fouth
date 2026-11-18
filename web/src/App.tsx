@@ -404,6 +404,8 @@ export default function App() {
     const row = newRow(preset)
     addedId.current = row.id
     setRows((all) => [...all, row])
+    // A card just added opens for editing, so its spec can be adjusted straight away.
+    setEditingCards((open) => new Set(open).add(row.id))
     picker.current?.close()
   }
   // Bring the row just added into view: on a long list it lands below the fold.
@@ -415,8 +417,20 @@ export default function App() {
 
   const update = (id: number, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   const remove = (id: number) => setRows((all) => all.filter((r) => r.id !== id))
-  const allCollapsed = rows.length > 0 && rows.every((r) => r.collapsed)
-  const setAllCollapsed = (collapsed: boolean) => setRows((all) => all.map((r) => ({ ...r, collapsed })))
+  // Which cards are open for editing. Not saved: every card starts in view mode on load.
+  const [editingCards, setEditingCards] = useState<Set<number>>(() => new Set())
+  const startEdit = (id: number) => setEditingCards((open) => new Set(open).add(id))
+  const finishEdit = (id: number) => {
+    setEditingCards((open) => {
+      const rest = new Set(open)
+      rest.delete(id)
+      return rest
+    })
+    // Hand focus back to the card's pencil, so the keyboard stays where it was.
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>(`[data-row-id="${id}"] .edit-btn`)?.focus(),
+    )
+  }
   const kwhOf = (row: Row) => priced.lineOf.get(row.id)?.kwhPerMonth ?? null
   const problemOf = (row: Row) => priced.problems.get(row.id) ?? null
 
@@ -628,11 +642,6 @@ export default function App() {
             <div className="panel-head">
               <h2 id="appliances-title">เครื่องใช้ไฟฟ้า</h2>
               <span className="muted">{rows.length} รายการ</span>
-              {rows.length > 0 && (
-                <button className="link-btn" onClick={() => setAllCollapsed(!allCollapsed)}>
-                  {allCollapsed ? 'ขยายทั้งหมด' : 'ย่อทั้งหมด'}
-                </button>
-              )}
             </div>
 
             {compare && (
@@ -660,42 +669,37 @@ export default function App() {
 
             <ul className="rows">
               {rows.map((row) =>
-                row.collapsed ? (
-                  <li key={row.id} className={problemOf(row) ? 'row row-collapsed row-invalid' : 'row row-collapsed'} data-row-id={row.id}>
-                    <button
-                      className="row-summary"
-                      aria-expanded="false"
-                      onClick={() => update(row.id, { collapsed: false })}
-                    >
-                      <span className="chevron" aria-hidden="true">
-                        ▸
+                !editingCards.has(row.id) ? (
+                  // View mode: values only, nothing to type into, so a tap never lands in a field.
+                  <li key={row.id} className={problemOf(row) ? 'row row-view row-invalid' : 'row row-view'} data-row-id={row.id}>
+                    <Icon name={iconOf(row)} size={26} className="row-icon" />
+                    <span className="summary-text">
+                      <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
+                      <span className="muted small">{specSummary(row)}</span>
+                    </span>
+                    {problemOf(row) ? (
+                      <span className="summary-skip" title={problemOf(row) ?? undefined}>
+                        ไม่ได้นำมาคิด
                       </span>
-                      <Icon name={iconOf(row)} size={26} className="row-icon" />
-                      <span className="summary-text">
-                        <span className="summary-name">{row.name || 'ไม่มีชื่อ'}</span>
-                        <span className="muted small">{specSummary(row)}</span>
-                      </span>
-                      {problemOf(row) ? (
-                        <span className="summary-skip">ไม่ได้นำมาคิด</span>
-                      ) : (
-                        kwhOf(row) && <span className="summary-kwh">{kwhOf(row)} หน่วย</span>
-                      )}
+                    ) : (
+                      kwhOf(row) && <span className="summary-kwh">{kwhOf(row)} หน่วย</span>
+                    )}
+                    <button className="icon-btn edit-btn" onClick={() => startEdit(row.id)} aria-label={`แก้ไข ${row.name}`} title="แก้ไข">
+                      <Icon name="pencil" size={18} />
                     </button>
-                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
+                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`} title="ลบ">
                       ✕
                     </button>
                   </li>
                 ) : (
-                <li key={row.id} className={problemOf(row) ? 'row row-invalid' : 'row'} data-row-id={row.id}>
+                <li
+                  key={row.id}
+                  className={problemOf(row) ? 'row row-editing row-invalid' : 'row row-editing'}
+                  data-row-id={row.id}
+                  // Enter in a text field saves, as the บันทึก button does.
+                  onKeyDown={(e) => e.key === 'Enter' && e.target instanceof HTMLInputElement && finishEdit(row.id)}
+                >
                   <div className="row-top">
-                    <button
-                      className="icon-btn chevron-btn"
-                      aria-expanded="true"
-                      aria-label={`ย่อ ${row.name}`}
-                      onClick={() => update(row.id, { collapsed: true })}
-                    >
-                      ▾
-                    </button>
                     <Icon name={iconOf(row)} size={26} className="row-icon" />
                     <input
                       className="name"
@@ -703,7 +707,11 @@ export default function App() {
                       value={row.name}
                       onChange={(e) => update(row.id, { name: e.target.value })}
                     />
-                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`}>
+                    <button className="save-btn" onClick={() => finishEdit(row.id)}>
+                      <Icon name="check" size={16} />
+                      บันทึก
+                    </button>
+                    <button className="icon-btn" onClick={() => remove(row.id)} aria-label={`ลบ ${row.name}`} title="ลบ">
                       ✕
                     </button>
                   </div>
